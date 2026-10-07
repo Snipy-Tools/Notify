@@ -3,8 +3,18 @@ use std::fs;
 use std::hash::{BuildHasher, Hasher};
 use std::path::PathBuf;
 
-fn dir() -> PathBuf {
+pub fn dir() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let dir = base.join("notify");
+    fs::create_dir_all(&dir).ok();
+    dir
+}
+
+// Journal und Einstellungen liegen im Roaming-Ordner
+pub fn data_dir() -> PathBuf {
+    let base = std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
     let dir = base.join("notify");
