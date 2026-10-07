@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+:root {
+    --bg: #16201D;
+    --row: #1E2B27;
+    --line: #223029;
+    --text: #E8F5F1;
+    --muted: #8FA39C;
+    --accent: #3DD6B0;
+    --blue: #5AA9F2;
+    --violet: #B58CF2;
+    --warn: #F2B84B;
+    --danger: #F26B6B;
+}
+* { box-sizing: border-box; }
+html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+}
+[hidden] { display: none !important; }
+button { font-family: inherit; }
+body { display: flex; flex-direction: column; }
+header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--line);
+}
+header h1 { flex: 1; margin: 0; font-size: 0.9375rem; font-weight: 600; text-align: center; }
+.nav {
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: var(--row);
+    color: var(--text);
+    font-size: 1rem;
+    cursor: pointer;
+}
+.nav:hover:not(:disabled) { filter: brightness(1.3); }
+.nav:disabled { opacity: .35; cursor: default; }
+.today-btn { width: auto; padding: 0 0.75rem; font-size: 0.8125rem; }
+.err { padding: 0.5rem 1rem; font-size: 0.8125rem; color: var(--danger); border-bottom: 1px solid var(--line); }
+main { flex: 1; overflow-y: auto; padding: 0.75rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.empty { margin-top: 2rem; text-align: center; color: var(--muted); font-size: 0.875rem; }
+.card {
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--c, var(--accent));
+    border-radius: 0.375rem;
+    background: var(--row);
+}
+.card.commit { --c: var(--blue); }
+.card.day { --c: var(--warn); }
+.card.reflection { --c: var(--violet); }
+.meta { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; font-size: 0.75rem; color: var(--muted); }
+.meta .time { font-family: Consolas, monospace; color: var(--text); }
+.meta .grow { flex: 1; }
+.body { font-size: 0.875rem; white-space: pre-wrap; word-break: break-word; }
+.label { margin-top: 0.375rem; font-size: 0.6875rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.repo { font-family: Consolas, monospace; font-size: 0.75rem; color: var(--muted); margin-right: 0.375rem; }
+.link {
+    padding: 0.125rem 0.375rem;
+    border: 0;
+    border-radius: 0.25rem;
+    background: none;
+    color: var(--accent);
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+.link:hover { background: var(--line); }
+.link.danger { color: var(--danger); }
+textarea, input {
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 0.375rem;
+    background: #111917;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+textarea { min-height: 4.5rem; resize: vertical; }
+textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+.actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
+.btn {
+    padding: 0.375rem 0.75rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: none;
+    color: var(--text);
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+.btn:hover { background: var(--line); }
+.btn.primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+    <button class="nav" id="prev" aria-label="Voriger Tag">‹</button>
+    <h1 id="label"></h1>
+    <button class="nav" id="next" aria-label="Nächster Tag">›</button>
+    <button class="nav today-btn" id="today">Heute</button>
+</header>
+<div class="err" id="err" hidden></div>
+<main id="list"></main>
+<script>
+const send = (msg) => window.ipc.postMessage(JSON.stringify(msg));
+const $ = (id) => document.getElementById(id);
+const list = $("list");
+let data = null;
+
+function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+}
+
+function button(label, cls, onclick) {
+    const b = el("button", cls, label);
+    b.onclick = onclick;
+    return b;
+}
+
+function field(card, label, value) {
+    card.append(el("div", "label", label), el("div", "body", value || "–"));
+}
+
+function meta(entry, title, actions) {
+    const m = el("div", "meta");
+    m.append(el("span", "time", entry.time), el("span", "grow", title));
+    actions.forEach((a) => m.append(a));
+    return m;
+}
+
+function confirmDelete(entry, btn) {
+    btn.textContent = "Wirklich löschen?";
+    btn.onclick = () => send({ op: "delete", id: entry.id });
+    setTimeout(() => {
+        btn.textContent = "Löschen";
+        btn.onclick = () => confirmDelete(entry, btn);
+    }, 4000);
+}
+
+function deleteButton(entry) {
+    const b = button("Löschen", "link danger", null);
+    b.onclick = () => confirmDelete(entry, b);
+    return b;
+}
+
+function noteCard(entry) {
+    const card = el("div", "card note");
+    const body = el("div", "body", entry.text);
+    const edit = button("Bearbeiten", "link", () => {
+        const area = el("textarea");
+        area.value = entry.text;
+        const actions = el("div", "actions");
+        actions.append(
+            button("Abbrechen", "btn", () => render()),
+            button("Speichern", "btn primary", () => send({ op: "update_note", id: entry.id, text: area.value })),
+        );
+        body.replaceWith(area);
+        edit.hidden = true;
+        card.append(actions);
+        area.focus();
+    });
+    card.append(meta(entry, "Notiz", [edit, deleteButton(entry)]), body);
+    return card;
+}
+
+function reflectionCard(entry) {
+    const card = el("div", "card reflection");
+    const fields = el("div");
+    const show = () => {
+        fields.replaceChildren();
+        const holder = el("div");
+        field(holder, "Wochenrückblick", entry.review);
+        field(holder, "Reflexion", entry.reflection);
+        field(holder, "Stimmung der Woche", entry.mood);
+        fields.append(holder);
+    };
+    show();
+    const edit = button("Bearbeiten", "link", () => {
+        const review = el("textarea"), reflection = el("textarea"), mood = el("input");
+        review.value = entry.review;
+        reflection.value = entry.reflection;
+        mood.value = entry.mood;
+        const actions = el("div", "actions");
+        actions.append(
+            button("Abbrechen", "btn", () => render()),
+            button("Speichern", "btn primary", () => send({
+                op: "update_reflection", id: entry.id,
+                review: review.value, reflection: reflection.value, mood: mood.value,
+            })),
+        );
+        fields.replaceChildren(
+            el("div", "label", "Wochenrückblick"), review,
+            el("div", "label", "Reflexion"), reflection,
+            el("div", "label", "Stimmung der Woche"), mood,
+            actions,
+        );
+        edit.hidden = true;
+        review.focus();
+    });
+    card.append(meta(entry, "Wochenreflexion", [edit, deleteButton(entry)]), fields);
+    return card;
+}
+
+function commitCard(entry) {
+    const card = el("div", "card commit");
+    const body = el("div", "body");
+    body.append(el("span", "repo", entry.repo), entry.text);
+    card.append(meta(entry, "Commit", []), body);
+    return card;
+}
+
+function dayCard(entry) {
+    const card = el("div", "card day");
+    card.append(meta(entry, "Tag markiert als " + entry.kind, []));
+    return card;
+}
+
+function render() {
+    list.replaceChildren();
+    if (!data) return;
+    $("label").textContent = data.label;
+    $("next").disabled = data.today;
+    if (data.entries.length === 0) {
+        list.append(el("div", "empty", "Keine Einträge an diesem Tag"));
+        return;
+    }
+    const cards = { note: noteCard, reflection: reflectionCard, commit: commitCard, day: dayCard };
+    data.entries.forEach((entry) => list.append(cards[entry.type](entry)));
+}
+
+// Rust ruft diese Funktionen auf
+function onDay(next) {
+    data = next;
+    $("err").hidden = true;
+    render();
+}
+function onError(msg) {
+    $("err").textContent = msg;
+    $("err").hidden = false;
+}
+
+$("prev").onclick = () => send({ op: "nav", delta: -1 });
+$("next").onclick = () => send({ op: "nav", delta: 1 });
+$("today").onclick = () => send({ op: "today" });
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") send({ op: "close" });
+});
+</script>
+</body>
+</html>

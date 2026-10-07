@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+:root {
+    --bg: #16201D;
+    --row: #1E2B27;
+    --line: #223029;
+    --text: #E8F5F1;
+    --muted: #8FA39C;
+    --accent: #3DD6B0;
+    --danger: #F26B6B;
+}
+* { box-sizing: border-box; }
+html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+}
+[hidden] { display: none !important; }
+button { font-family: inherit; }
+body { display: flex; flex-direction: column; }
+.err {
+    padding: 0.625rem 1rem;
+    font-size: 0.8125rem;
+    color: var(--danger);
+    border-bottom: 1px solid var(--line);
+    background: #2A1C1C;
+}
+main { flex: 1; overflow-y: auto; padding: 0.5rem 1.25rem 1rem; }
+section { padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
+section:last-child { border-bottom: 0; }
+h2 { margin: 0 0 0.5rem; font-size: 0.8125rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.row { display: grid; grid-template-columns: 11rem 1fr; gap: 0.75rem; align-items: start; margin-bottom: 0.625rem; }
+.row > label, .row > .lab { padding-top: 0.4375rem; font-size: 0.875rem; }
+.hint { margin-top: 0.25rem; font-size: 0.75rem; color: var(--muted); }
+.days { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.days label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.5rem;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 0.375rem;
+    background: var(--row);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    user-select: none;
+}
+.days input { display: none; }
+.days label:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+input[type=text], input[type=time], select, textarea {
+    width: 100%;
+    padding: 0.4375rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 0.375rem;
+    background: #111917;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+textarea { min-height: 4rem; resize: vertical; font-family: Consolas, monospace; font-size: 0.8125rem; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+input.short { width: 6rem; }
+.block { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.375rem; }
+.block input { width: 7rem; }
+.link {
+    padding: 0.25rem 0.5rem;
+    border: 0;
+    border-radius: 0.25rem;
+    background: none;
+    color: var(--accent);
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+.link:hover { background: var(--row); }
+.link.danger { color: var(--danger); }
+.check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; padding-top: 0.4375rem; }
+footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1.25rem; border-top: 1px solid var(--line); }
+.btn {
+    padding: 0.5rem 1rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: none;
+    color: var(--text);
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+.btn:hover { background: var(--row); }
+.btn.primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.1); }
+</style>
+</head>
+<body>
+<div class="err" id="err" hidden></div>
+<main>
+    <section>
+        <h2>Check-ins</h2>
+        <div class="row"><div class="lab">Arbeitstage</div><div class="days" id="work-days"></div></div>
+        <div class="row">
+            <div class="lab">Arbeitszeiten</div>
+            <div>
+                <div id="blocks"></div>
+                <button class="link" id="add-block">+ Zeitblock hinzufügen</button>
+                <div class="hint">Blöcke dürfen sich nicht überschneiden, z. B. 08:00–12:00 und 13:00–17:00.</div>
+            </div>
+        </div>
+        <div class="row">
+            <label for="interval">Intervall (Minuten)</label>
+            <div><input class="short" type="text" id="interval" inputmode="numeric"><div class="hint">Wie oft ein Eintrag fällig wird (1 bis 480).</div></div>
+        </div>
+        <div class="row">
+            <label for="away">Weg-Schwelle (Minuten)</label>
+            <div><input class="short" type="text" id="away" inputmode="numeric"><div class="hint">So lange ohne Eingabe gilt als weg, dann kommt kein Check-in (1 bis 240).</div></div>
+        </div>
+        <div class="row"><div class="lab">Schultage</div><div><div class="days" id="school-days"></div><div class="hint">An diesen Tagen gibt es keine Check-ins, wenn der Tag nicht anders markiert ist.</div></div></div>
+        <div class="row">
+            <label for="reflection-day">Reflexionstag</label>
+            <select id="reflection-day"></select>
+        </div>
+    </section>
+    <section>
+        <h2>Git</h2>
+        <div class="row">
+            <label for="git-folders">Ordner mit Repos</label>
+            <div><textarea id="git-folders" spellcheck="false" placeholder="C:\Work"></textarea><div class="hint">Ein Ordner pro Zeile. Repos werden bis 4 Ebenen darunter gesucht.</div></div>
+        </div>
+        <div class="row">
+            <label for="git-emails">Meine E-Mail-Adressen</label>
+            <div><textarea id="git-emails" spellcheck="false" placeholder="name@example.com"></textarea><div class="hint">Eine Adresse pro Zeile. Nur Commits mit diesen Adressen zählen. Ohne Ordner oder Adresse bleibt Git aus.</div></div>
+        </div>
+    </section>
+    <section>
+        <h2>Export</h2>
+        <div class="row"><label for="location">Ort</label><input type="text" id="location" placeholder="@Firma"></div>
+        <div class="row">
+            <label for="hours">Arbeitszeit pro Tag (Stunden)</label>
+            <div><input class="short" type="text" id="hours" inputmode="decimal"><div class="hint">Wird nach der gemessenen Zeit auf die Einträge verteilt (0 bis 24). Bei 0 zählt nur die gemessene Zeit.</div></div>
+        </div>
+        <div class="row">
+            <label for="export-dir">Zielordner</label>
+            <div><input type="text" id="export-dir" spellcheck="false"><div class="hint">Leer lassen für Dokumente\Recapr.</div></div>
+        </div>
+    </section>
+    <section>
+        <h2>System</h2>
+        <div class="row"><div class="lab">Autostart</div><label class="check"><input type="checkbox" id="autostart"> Mit Windows starten</label></div>
+    </section>
+</main>
+<footer>
+    <button class="btn" id="cancel">Abbrechen</button>
+    <button class="btn primary" id="save">Speichern</button>
+</footer>
+<script>
+const send = (msg) => window.ipc.postMessage(JSON.stringify(msg));
+const $ = (id) => document.getElementById(id);
+const DAYS = [["Mon", "Mo"], ["Tue", "Di"], ["Wed", "Mi"], ["Thu", "Do"], ["Fri", "Fr"], ["Sat", "Sa"], ["Sun", "So"]];
+
+function dayPicker(container, selected) {
+    container.replaceChildren(...DAYS.map(([key, label]) => {
+        const l = document.createElement("label");
+        const c = document.createElement("input");
+        c.type = "checkbox";
+        c.value = key;
+        c.checked = selected.includes(key);
+        l.append(c, label);
+        return l;
+    }));
+}
+
+const picked = (container) => [...container.querySelectorAll("input:checked")].map((c) => c.value);
+const lines = (area) => area.value.split("\n").map((l) => l.trim()).filter((l) => l);
+
+function addBlock(start, end) {
+    const row = document.createElement("div");
+    row.className = "block";
+    const a = document.createElement("input");
+    const b = document.createElement("input");
+    a.type = b.type = "time";
+    a.value = start;
+    b.value = end;
+    const remove = document.createElement("button");
+    remove.className = "link danger";
+    remove.textContent = "Entfernen";
+    remove.onclick = () => row.remove();
+    row.append(a, "bis", b, remove);
+    $("blocks").append(row);
+}
+
+// Rust ruft diese Funktionen auf
+function onSettings(data) {
+    const s = data.settings;
+    $("err").hidden = true;
+    dayPicker($("work-days"), s.work_days);
+    dayPicker($("school-days"), s.school_days);
+    $("blocks").replaceChildren();
+    s.work_blocks.forEach((b) => addBlock(b.start, b.end));
+    $("interval").value = s.interval_minutes;
+    $("away").value = s.away_minutes;
+    $("reflection-day").replaceChildren(...DAYS.map(([key, label]) => {
+        const o = document.createElement("option");
+        o.value = key;
+        o.textContent = label;
+        o.selected = key === s.reflection_day;
+        return o;
+    }));
+    $("git-folders").value = s.git_folders.join("\n");
+    $("git-emails").value = s.git_emails.join("\n");
+    $("location").value = s.location;
+    $("hours").value = s.hours_per_day;
+    $("export-dir").value = s.export_dir;
+    $("autostart").checked = data.autostart;
+    document.querySelector("main").scrollTop = 0;
+}
+function onError(msg) {
+    $("err").textContent = msg;
+    $("err").hidden = false;
+    document.querySelector("main").scrollTop = 0;
+}
+
+function save() {
+    send({
+        op: "save",
+        work_days: picked($("work-days")),
+        work_blocks: [...$("blocks").children].map((row) => {
+            const [a, b] = row.querySelectorAll("input");
+            return { start: a.value, end: b.value };
+        }),
+        interval_minutes: $("interval").value,
+        away_minutes: $("away").value,
+        school_days: picked($("school-days")),
+        reflection_day: $("reflection-day").value,
+        git_folders: lines($("git-folders")),
+        git_emails: lines($("git-emails")),
+        location: $("location").value,
+        hours_per_day: $("hours").value,
+        export_dir: $("export-dir").value,
+        autostart: $("autostart").checked,
+    });
+}
+
+$("add-block").onclick = () => addBlock("", "");
+$("save").onclick = save;
+$("cancel").onclick = () => send({ op: "close" });
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") send({ op: "close" });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+:root {
+    --bg: #16201D;
+    --row: #1E2B27;
+    --line: #223029;
+    --text: #E8F5F1;
+    --muted: #8FA39C;
+    --accent: #3DD6B0;
+    --danger: #F26B6B;
+}
+* { box-sizing: border-box; }
+html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    overflow: hidden;
+}
+[hidden] { display: none !important; }
+button { font-family: inherit; }
+body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding: 1rem;
+}
+h1 { margin: 0; font-size: 0.9375rem; font-weight: 600; }
+.form {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+label { font-size: 0.75rem; color: var(--muted); }
+textarea, input {
+    padding: 0.625rem;
+    border: 1px solid var(--line);
+    border-radius: 0.375rem;
+    background: #111917;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+textarea { flex: 1; min-height: 0; resize: none; }
+input { padding: 0.5rem 0.625rem; }
+textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+textarea::placeholder, input::placeholder { color: var(--muted); }
+.commits {
+    border: 1px solid var(--line);
+    border-radius: 0.375rem;
+    background: var(--row);
+    font-size: 0.8125rem;
+}
+.chead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.25rem 0.625rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+.link {
+    padding: 0.125rem 0.25rem;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+.link:hover { text-decoration: underline; }
+#to-note { align-self: flex-start; }
+#clist {
+    margin: 0;
+    padding: 0 0.625rem 0.375rem;
+    max-height: 5rem;
+    overflow-y: auto;
+    list-style: none;
+}
+#clist li { padding: 0.0625rem 0; word-break: break-word; }
+#clist .repo { color: var(--muted); margin-right: 0.375rem; font-family: Consolas, monospace; font-size: 0.75rem; }
+.hint { font-size: 0.75rem; color: var(--muted); }
+.err { font-size: 0.8125rem; color: var(--danger); }
+.actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.btn {
+    padding: 0.5rem 0.875rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: none;
+    color: var(--text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background .12s, opacity .12s;
+}
+.btn:hover { background: var(--row); }
+.btn:active { opacity: .7; }
+.btn.primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.1); }
+</style>
+</head>
+<body>
+<h1 id="title">Was hast du gemacht?</h1>
+<div class="commits" id="commits" hidden>
+    <div class="chead"><span id="ccount"></span><button class="link" id="take">In Text übernehmen</button></div>
+    <ul id="clist"></ul>
+</div>
+<div class="form" id="note-form">
+    <textarea id="text" placeholder="Kurz aufschreiben, was du gemacht hast" spellcheck="false"></textarea>
+</div>
+<div class="form" id="reflect-form" hidden>
+    <label for="review">Wochenrückblick</label>
+    <textarea id="review" placeholder="Was ist diese Woche passiert?" spellcheck="false"></textarea>
+    <label for="reflection">Reflexion</label>
+    <textarea id="reflection" placeholder="Was habe ich gelernt, was mache ich nächstes Mal anders?" spellcheck="false"></textarea>
+    <label for="mood">Stimmung der Woche</label>
+    <input id="mood" placeholder="z. B. gut, anstrengend, motiviert" spellcheck="false">
+    <button class="link" id="to-note">Stattdessen nur eine Notiz</button>
+</div>
+<div class="err" id="err" hidden></div>
+<div class="hint" id="hint"></div>
+<div class="actions">
+    <button class="btn" id="skip">Überspringen</button>
+    <button class="btn" id="later">Später</button>
+    <button class="btn primary" id="save">Speichern</button>
+</div>
+<script>
+const send = (msg) => window.ipc.postMessage(msg);
+const $ = (id) => document.getElementById(id);
+const text = $("text");
+const err = $("err");
+const HINTS = {
+    note: "Enter speichert · Shift+Enter neue Zeile · Esc schliesst",
+    reflection: "Strg+Enter speichert · Esc schliesst",
+};
+let mode = "note";
+let commits = [];
+
+function save() {
+    err.hidden = true;
+    if (mode === "note") {
+        send("save:" + text.value);
+    } else {
+        send("reflect:" + JSON.stringify({
+            review: $("review").value,
+            reflection: $("reflection").value,
+            mood: $("mood").value,
+        }));
+    }
+}
+
+function focusFirst() {
+    (mode === "note" ? text : $("review")).focus();
+}
+
+// Rust ruft diese Funktionen auf
+function onMode(next) {
+    mode = next;
+    $("title").textContent = next === "note" ? "Was hast du gemacht?" : "Wochenreflexion";
+    $("note-form").hidden = next !== "note";
+    $("reflect-form").hidden = next !== "reflection";
+    $("hint").textContent = HINTS[next];
+    err.hidden = true;
+    focusFirst();
+}
+function onShow() {
+    err.hidden = true;
+    focusFirst();
+}
+function onReset() {
+    text.value = "";
+    $("review").value = "";
+    $("reflection").value = "";
+    $("mood").value = "";
+    err.hidden = true;
+}
+function onCommits(list) {
+    commits = list;
+    $("clist").replaceChildren(...list.map((c) => {
+        const li = document.createElement("li");
+        const repo = document.createElement("span");
+        repo.className = "repo";
+        repo.textContent = c.repo;
+        li.append(repo, c.text);
+        return li;
+    }));
+    $("ccount").textContent =
+        list.length === 1 ? "1 Commit seit dem letzten Eintrag" : list.length + " Commits seit dem letzten Eintrag";
+    $("commits").hidden = list.length === 0;
+}
+function onError(msg) {
+    err.textContent = msg;
+    err.hidden = false;
+    focusFirst();
+}
+
+$("take").onclick = () => {
+    const target = mode === "note" ? text : $("review");
+    const lines = commits.map((c) => "- " + c.text).filter((l) => !target.value.includes(l));
+    if (lines.length === 0) return;
+    const sep = target.value && !target.value.endsWith("\n") ? "\n" : "";
+    target.value += sep + lines.join("\n");
+    target.focus();
+};
+$("to-note").onclick = () => send("mode:note");
+$("save").onclick = save;
+$("later").onclick = () => send("later");
+$("skip").onclick = () => send("skip");
+text.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.isComposing) {
+        e.preventDefault();
+        save();
+    }
+});
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") send("close");
+    if (e.key === "Enter" && e.ctrlKey && !e.isComposing) {
+        e.preventDefault();
+        save();
+    }
+});
+onMode("note");
+</script>
+</body>
+</html>
