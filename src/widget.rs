@@ -6,7 +6,7 @@ use tao::dpi::{LogicalSize, PhysicalPosition};
 use tao::event::WindowEvent;
 use tao::event_loop::{EventLoopProxy, EventLoopWindowTarget};
 use tao::platform::windows::WindowBuilderExtWindows;
-use tao::window::{Window, WindowBuilder};
+use tao::window::{Window, WindowBuilder, WindowId};
 use wry::{WebView, WebViewBuilder};
 
 const SIZE: LogicalSize<f64> = LogicalSize::new(340.0, 52.0);
@@ -15,7 +15,7 @@ const TASKBAR: f64 = 48.0;
 const SNAP: f64 = 24.0;
 const SETTLE: Duration = Duration::from_millis(500);
 
-fn js_string(s: &str) -> String {
+pub fn js_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for c in s.chars() {
@@ -169,12 +169,17 @@ impl Widget {
             UserEvent::Drag => {
                 self.window.drag_window().ok();
             }
-            UserEvent::Menu(_) => {}
+            UserEvent::Menu(_)
+            | UserEvent::Entry(_)
+            | UserEvent::Hotkey
+            | UserEvent::Commits(_)
+            | UserEvent::Today(_)
+            | UserEvent::Settings(_) => {}
         }
     }
 
-    pub fn handle_event(&mut self, event: &WindowEvent) {
-        if let WindowEvent::Moved(_) = event {
+    pub fn handle_event(&mut self, id: WindowId, event: &WindowEvent) {
+        if id == self.window.id() && let WindowEvent::Moved(_) = event {
             self.save_at = Some(Instant::now() + SETTLE);
         }
     }
