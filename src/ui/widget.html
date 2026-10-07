@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+:root {
+    --bg: #16201D;
+    --row: #1E2B27;
+    --line: #223029;
+    --text: #E8F5F1;
+    --muted: #8FA39C;
+    --accent: #3DD6B0;
+    --warn: #F2B84B;
+    --danger: #F26B6B;
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    background: transparent;
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    user-select: none;
+    overflow: hidden;
+}
+[hidden] { display: none !important; }
+button { font-family: inherit; }
+.widget {
+    width: 340px;
+    border: 1px solid var(--line);
+    border-radius: 0.875rem;
+    background: var(--bg);
+    overflow: hidden;
+}
+.bar {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    height: 3.25rem;
+    padding: 0 0.625rem 0 1rem;
+}
+.bar.stale .meter { opacity: .45; }
+.meter {
+    flex: 1;
+    min-width: 0;
+    transition: opacity .2s;
+}
+.top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.3125rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+}
+.top .rst { display: none; font-family: Consolas, monospace; font-size: 0.6875rem; }
+.top .lab, .top .rst { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.meter:hover .lab { display: none; }
+.meter:hover .rst { display: block; }
+.pct { flex: none; margin-left: 0.375rem; font-family: Consolas, monospace; color: var(--text); }
+.track {
+    height: 0.25rem;
+    border-radius: 0.125rem;
+    background: var(--line);
+    overflow: hidden;
+}
+.fill {
+    height: 100%;
+    width: 0;
+    border-radius: 0.125rem;
+    background: var(--c, var(--accent));
+    transition: width .3s ease, background .3s;
+}
+.fold {
+    flex: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0.375rem;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background .12s, color .12s;
+}
+.fold:hover { background: var(--row); color: var(--text); }
+.fold svg { width: 0.875rem; height: 0.875rem; }
+.alerts:empty { display: none; }
+.alerts { border-top: 1px solid var(--line); }
+.alert {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--line);
+    animation: pop .15s ease-out;
+}
+.alert:last-child { border-bottom: 0; }
+.head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.dot-mark {
+    flex: none;
+    width: 0.4375rem;
+    height: 0.4375rem;
+    border-radius: 50%;
+    background: var(--accent);
+}
+.alert.warn .dot-mark { background: var(--warn); }
+.alert.danger .dot-mark { background: var(--danger); }
+.who {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: Consolas, monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+.close {
+    flex: none;
+    width: 1.375rem;
+    height: 1.375rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0.375rem;
+    background: none;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .12s, color .12s;
+}
+.close:hover { background: var(--row); color: var(--text); }
+.title { font-size: 0.9375rem; font-weight: 600; }
+.text {
+    margin-top: 0.25rem;
+    font-size: 0.8125rem;
+    color: var(--muted);
+    word-break: break-word;
+}
+.cmd {
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    max-height: 5.5rem;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 0.375rem;
+    background: var(--row);
+    font-family: Consolas, monospace;
+    font-size: 0.75rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    user-select: text;
+}
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.625rem;
+}
+.btn {
+    padding: 0.5rem 0.875rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: none;
+    color: var(--text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background .12s, opacity .12s;
+}
+.btn:hover { background: var(--row); }
+.btn:active { opacity: .7; }
+.btn.primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn:disabled { opacity: .4; pointer-events: none; }
+.reply { display: flex; gap: 0.5rem; margin-top: 0.625rem; }
+.reply input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.4375rem 0.625rem;
+    border: 1px solid var(--line);
+    border-radius: 0.375rem;
+    background: #111917;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+    user-select: text;
+}
+.reply input:focus { outline: none; border-color: var(--accent); }
+.reply input::placeholder { color: var(--muted); }
+.drain {
+    height: 0.125rem;
+    margin-top: 0.625rem;
+    border-radius: 0.0625rem;
+    background: var(--accent);
+    transform-origin: left;
+}
+@keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.dot {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--bg);
+    cursor: pointer;
+    animation: pop .15s ease-out;
+}
+.ring {
+    position: absolute;
+    border-radius: 50%;
+    background: conic-gradient(var(--c, var(--accent)) calc(var(--p, 0) * 1%), var(--line) 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px));
+}
+.ring.r1 { inset: 2px; }
+.ring.r2 { inset: 8px; }
+.ring.r3 { inset: 14px; }
+.spin {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 12px;
+    margin: -6px 0 0 -6px;
+    display: grid;
+    grid-template: 5px 5px / 5px 5px;
+    gap: 2px;
+}
+.spin i {
+    border-radius: 1px;
+    background: var(--accent);
+    opacity: .25;
+}
+.spin i:nth-child(1) { grid-area: 1 / 1; }
+.spin i:nth-child(2) { grid-area: 1 / 2; }
+.spin i:nth-child(3) { grid-area: 2 / 2; }
+.spin i:nth-child(4) { grid-area: 2 / 1; }
+.dot.busy .spin i { animation: chase 1s linear infinite; }
+.dot.busy .spin i:nth-child(2) { animation-delay: .25s; }
+.dot.busy .spin i:nth-child(3) { animation-delay: .5s; }
+.dot.busy .spin i:nth-child(4) { animation-delay: .75s; }
+@keyframes chase {
+    0% { opacity: 1; }
+    100% { opacity: .25; }
+}
+@keyframes pop {
+    from { opacity: 0; transform: scale(.9); }
+    to { opacity: 1; transform: scale(1); }
+}
+</style>
+</head>
+<body>
+<div class="widget" id="widget">
+    <div class="bar" id="bar">
+        <div class="meter" id="m-five">
+            <div class="top"><span class="lab">Session</span><span class="rst"></span><span class="pct">–</span></div>
+            <div class="track"><div class="fill"></div></div>
+        </div>
+        <div class="meter" id="m-seven">
+            <div class="top"><span class="lab">Week</span><span class="rst"></span><span class="pct">–</span></div>
+            <div class="track"><div class="fill"></div></div>
+        </div>
+        <div class="meter" id="m-ctx">
+            <div class="top"><span class="lab">Context</span><span class="rst"></span><span class="pct">–</span></div>
+            <div class="track"><div class="fill"></div></div>
+        </div>
+        <button class="fold" id="fold" aria-label="Collapse">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5l4 4 4-4"/></svg>
+        </button>
+    </div>
+    <div class="alerts" id="alerts"></div>
+</div>
+<div class="dot" id="dot" hidden>
+    <div class="ring r1" id="ring-five"></div>
+    <div class="ring r2" id="ring-seven"></div>
+    <div class="ring r3" id="ring-ctx"></div>
+    <div class="spin"><i></i><i></i><i></i><i></i></div>
+</div>
+
+<script>
+const send = (msg) => window.ipc.postMessage(msg);
+const $ = (id) => document.getElementById(id);
+
+const WIDTH = 340;
+const STALE_MS = 10 * 60 * 1000;
+const WARN_AT = 70;
+const DANGER_AT = 90;
+const ARM_MS = 350;
+const STOP_MS = 8000;
+const STOP_REARM_MS = 6000;
+const INFO_MS = 8000;
+const WORK_MS = 3 * 60 * 1000;
+
+const usage = { five: null, seven: null, ctx: null, ctxSize: 0, at: 0 };
+const alerts = new Map();
+const warned = new Set();
+let collapsed = false;
+let lastSize = "";
+let working = false;
+let workTimer = 0;
+
+const colorFor = (p) => p >= DANGER_AT ? "var(--danger)" : p >= WARN_AT ? "var(--warn)" : "var(--accent)";
+
+function fmtSpan(ms) {
+    const m = Math.max(0, Math.round(ms / 60000));
+    if (m >= 1440) return Math.floor(m / 1440) + "d " + Math.floor((m % 1440) / 60) + "h";
+    if (m >= 60) return Math.floor(m / 60) + "h " + (m % 60) + "m";
+    return m + "m";
+}
+
+function fmtK(n) {
+    return n >= 1000000 ? (n / 1000000).toFixed(1) + "M" : Math.round(n / 1000) + "k";
+}
+
+function live(w) {
+    return w && (!w.resets || w.resets * 1000 > Date.now()) ? w : null;
+}
+
+function setMeter(id, w, resetText) {
+    const m = $(id);
+    const pct = m.querySelector(".pct");
+    const fill = m.querySelector(".fill");
+    const rst = m.querySelector(".rst");
+    if (!w) {
+        pct.textContent = "–";
+        fill.style.width = "0";
+        rst.textContent = "no data";
+        return;
+    }
+    const p = Math.min(100, Math.max(0, w.pct));
+    pct.textContent = Math.round(w.pct) + "%";
+    fill.style.width = p + "%";
+    fill.style.setProperty("--c", colorFor(w.pct));
+    rst.textContent = resetText;
+}
+
+function setRing(id, w) {
+    const r = $(id);
+    r.style.setProperty("--p", w ? Math.min(100, Math.max(0, w.pct)) : 0);
+    r.style.setProperty("--c", w ? colorFor(w.pct) : "var(--accent)");
+}
+
+function setWorking(on) {
+    clearTimeout(workTimer);
+    working = on;
+    if (on) workTimer = setTimeout(() => setWorking(false), WORK_MS);
+    render();
+}
+
+function render() {
+    const five = live(usage.five);
+    const seven = live(usage.seven);
+    const ctx = usage.ctx;
+
+    setMeter("m-five", five, five && five.resets ? "in " + fmtSpan(five.resets * 1000 - Date.now()) : "");
+    setMeter("m-seven", seven, seven && seven.resets ? "in " + fmtSpan(seven.resets * 1000 - Date.now()) : "");
+    setMeter("m-ctx", ctx, ctx && usage.ctxSize ? fmtK(ctx.pct * usage.ctxSize / 100) + "/" + fmtK(usage.ctxSize) : "");
+
+    $("bar").classList.toggle("stale", usage.at > 0 && Date.now() - usage.at > STALE_MS);
+
+    setRing("ring-five", five);
+    setRing("ring-seven", seven);
+    setRing("ring-ctx", ctx);
+    $("dot").classList.toggle("busy", working);
+
+    const showDot = collapsed && alerts.size === 0;
+    $("widget").hidden = showDot;
+    $("dot").hidden = !showDot;
+    fit();
+}
+
+function fit() {
+    const root = $("dot").hidden ? $("widget") : $("dot");
+    const w = Math.ceil(root.offsetWidth);
+    const h = Math.ceil(root.offsetHeight);
+    const key = w + ":" + h;
+    if (key !== lastSize && w > 0 && h > 0) {
+        lastSize = key;
+        send("size:" + w + ":" + h);
+    }
+}
+
+function setCollapsed(on) {
+    collapsed = on;
+    render();
+}
+
+function onStatus(raw) {
+    let d;
+    try { d = JSON.parse(raw); } catch { return; }
+    const limits = d.rate_limits || {};
+    const read = (w) => w && typeof w.used_percentage === "number" ? { pct: w.used_percentage, resets: w.resets_at } : null;
+
+    usage.five = read(limits.five_hour) || live(usage.five);
+    usage.seven = read(limits.seven_day) || live(usage.seven);
+
+    const c = d.context_window;
+    if (c && typeof c.used_percentage === "number") {
+        usage.ctx = { pct: c.used_percentage };
+        usage.ctxSize = c.context_window_size || 0;
+    }
+    usage.at = Date.now();
+    if (working) setWorking(true);
+
+    warnAt("Session limit", usage.five);
+    warnAt("Weekly limit", usage.seven);
+    render();
+}
+
+function warnAt(name, w) {
+    if (!w || w.pct < DANGER_AT) return;
+    const key = name + ":" + w.resets;
+    if (warned.has(key)) return;
+    warned.add(key);
+    const reset = w.resets ? " Resets in " + fmtSpan(w.resets * 1000 - Date.now()) + "." : "";
+    addInfo(null, "danger", name, Math.round(w.pct) + "% used." + reset, "");
+}
+
+function project(d) {
+    const cwd = d.cwd || "";
+    return cwd.split(/[\\/]/).filter(Boolean).pop() || "claude";
+}
+
+function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+}
+
+function removeAlert(id) {
+    const a = alerts.get(id);
+    if (!a) return;
+    clearTimeout(a.timer);
+    a.node.remove();
+    alerts.delete(id);
+    render();
+}
+
+function release(id) {
+    send("release:" + id);
+    removeAlert(id);
+}
+
+function reply(id, text) {
+    send("reply:" + id + ":" + text);
+    removeAlert(id);
+}
+
+function buildAlert(id, tone, who) {
+    const node = el("div", "alert" + (tone ? " " + tone : ""));
+    const head = el("div", "head");
+    head.append(el("span", "dot-mark"), el("span", "who", who));
+    const close = el("button", "close", "×");
+    close.title = "Dismiss";
+    close.addEventListener("click", () => id === null ? dismiss(node) : release(id));
+    head.append(close);
+    node.append(head);
+    return node;
+}
+
+function dismiss(node) {
+    for (const [k, a] of alerts) {
+        if (a.node === node) { removeAlert(k); return; }
+    }
+}
+
+function register(id, node, timer) {
+    const key = id === null ? "local-" + Math.random() : id;
+    alerts.set(key, { node, timer });
+    $("alerts").append(node);
+    collapsed = false;
+    render();
+    return key;
+}
+
+function addInfo(id, tone, title, text, who) {
+    const node = buildAlert(id, tone, who || "notify");
+    node.append(el("div", "title", title));
+    if (text) node.append(el("div", "text", text));
+    const key = register(id, node, null);
+    alerts.get(key).timer = setTimeout(() => {
+        if (id === null) removeAlert(key); else release(id);
+    }, INFO_MS);
+}
+
+function arm(buttons) {
+    buttons.forEach((b) => b.disabled = true);
+    setTimeout(() => buttons.forEach((b) => b.disabled = false), ARM_MS);
+}
+
+const allow = '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}';
+const deny = '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}';
+
+function describe(input) {
+    const pick = input.command ?? input.file_path ?? input.url ?? input.pattern ?? input.path;
+    const text = typeof pick === "string" ? pick : JSON.stringify(input, null, 2);
+    return text.length > 600 ? text.slice(0, 600) + "…" : text;
+}
+
+function addPermission(id, d) {
+    const input = d.tool_input || {};
+    if (d.tool_name === "AskUserQuestion") {
+        const q = Array.isArray(input.questions) && input.questions[0] ? input.questions[0].question : "";
+        const node = buildAlert(id, "", project(d));
+        node.append(el("div", "title", "Claude has a question"));
+        node.append(el("div", "text", q || "Answer in the terminal."));
+        register(id, node, null);
+        return;
+    }
+
+    const node = buildAlert(id, "", project(d));
+    node.append(el("div", "title", "Allow " + (d.tool_name || "tool") + "?"));
+    node.append(el("div", "cmd", describe(input)));
+    const actions = el("div", "actions");
+    const no = el("button", "btn", "Deny");
+    const yes = el("button", "btn primary", "Allow");
+    no.addEventListener("click", () => reply(id, deny));
+    yes.addEventListener("click", () => reply(id, allow));
+    actions.append(no, yes);
+    node.append(actions);
+    arm([no, yes]);
+    register(id, node, null);
+}
+
+function addStop(id, d) {
+    setWorking(false);
+    const node = buildAlert(id, "", project(d));
+    node.append(el("div", "title", "Claude finished"));
+    const last = typeof d.last_assistant_message === "string" ? d.last_assistant_message : "";
+    if (last) node.append(el("div", "text", last.length > 160 ? last.slice(0, 160) + "…" : last));
+
+    const row = el("div", "reply");
+    const input = el("input");
+    input.placeholder = "Reply to Claude…";
+    const sendBtn = el("button", "btn primary", "Send");
+    row.append(input, sendBtn);
+    node.append(row);
+
+    const bar = el("div", "drain");
+    node.append(bar);
+
+    register(id, node, null);
+    const entry = alerts.get(id);
+    const start = (ms) => {
+        clearTimeout(entry.timer);
+        bar.style.animation = "none";
+        bar.offsetWidth;
+        bar.style.animation = "drain " + ms + "ms linear forwards";
+        entry.timer = setTimeout(() => release(id), ms);
+    };
+    const submit = () => {
+        const text = input.value.trim();
+        if (!text) return;
+        setWorking(true);
+        reply(id, JSON.stringify({
+            decision: "block",
+            reason: "The user replied from Notify: " + text
+        }));
+    };
+
+    input.addEventListener("focus", () => {
+        clearTimeout(entry.timer);
+        bar.style.animation = "none";
+    });
+    input.addEventListener("blur", () => {
+        if (alerts.has(id) && !input.value.trim()) start(STOP_REARM_MS);
+    });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    sendBtn.addEventListener("click", submit);
+
+    start(STOP_MS);
+}
+
+function onHook(id, raw) {
+    let d;
+    try { d = JSON.parse(raw); } catch { send("release:" + id); return; }
+    switch (d.hook_event_name) {
+        case "PermissionRequest":
+            addPermission(id, d);
+            break;
+        case "Stop":
+            addStop(id, d);
+            break;
+        case "UserPromptSubmit":
+            send("release:" + id);
+            setWorking(true);
+            break;
+        case "Notification":
+            send("release:" + id);
+            addInfo(null, "warn", d.title || "Claude needs you", d.message || "", project(d));
+            break;
+        default:
+            send("release:" + id);
+    }
+}
+
+function onGone(id) {
+    removeAlert(id);
+}
+
+let down = null;
+document.addEventListener("mousedown", (e) => {
+    if (e.button !== 0 || e.target.closest("button, input, .cmd")) return;
+    down = { x: e.screenX, y: e.screenY };
+});
+document.addEventListener("mousemove", (e) => {
+    if (down && (e.buttons & 1) && Math.hypot(e.screenX - down.x, e.screenY - down.y) > 3) {
+        down = null;
+        send("drag");
+    }
+});
+document.addEventListener("mouseup", () => { down = null; });
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+
+$("fold").addEventListener("click", () => setCollapsed(true));
+$("bar").addEventListener("dblclick", (e) => { if (!e.target.closest("button")) setCollapsed(true); });
+$("dot").addEventListener("click", () => setCollapsed(false));
+
+new ResizeObserver(fit).observe($("widget"));
+setInterval(render, 30000);
+render();
+</script>
+</body>
+</html>

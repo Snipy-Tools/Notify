@@ -1,0 +1,9 @@
+[package]
+name = "notify"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tao = "0.37.1"
+tray-icon = "0.26.0"
+wry = "0.57.0"
