@@ -9,7 +9,7 @@ use tao::event::WindowEvent;
 use tao::event_loop::EventLoopWindowTarget;
 use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
 use tao::window::{Window, WindowBuilder, WindowId};
-use wry::{WebView, WebViewBuilder};
+use wry::{WebContext, WebView, WebViewBuilder};
 
 /// Gemeinsame Tokens und Bausteine aller Fenster
 const BASE_CSS: &str = include_str!("./ui/base.css");
@@ -183,7 +183,9 @@ impl Popup {
             .with_inner_size(LogicalSize::new(size.0, size.1))
             .build(target)
             .map_err(|e| format!("Fenster {title}: {e}"))?;
-        let webview = WebViewBuilder::new()
+        // Standardordner liegt neben der exe und ist unter Program Files nicht beschreibbar
+        let mut context = WebContext::new(Some(crate::store::dir().join("webview")));
+        let webview = WebViewBuilder::new_with_web_context(&mut context)
             .with_transparent(true)
             .with_html(page(html))
             .with_ipc_handler(move |req| on_message(req.body().to_string()))
