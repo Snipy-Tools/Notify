@@ -34,7 +34,7 @@ Name: "{autodesktop}\Notify"; Filename: "{app}\notify.exe"; Tasks: desktopicon
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "Notify"; Flags: dontcreatekey uninsdeletevalue
 
 [Run]
-Filename: "{app}\notify.exe"; Description: "Launch Notify"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\notify.exe"; Description: "Launch Notify"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/f /im notify.exe"; Flags: runhidden; RunOnceId: "KillNotify"
