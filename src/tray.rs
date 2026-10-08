@@ -9,21 +9,42 @@ use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 const ICON_SIZE: u32 = 32;
 const ACCENT: [u8; 3] = [0x3D, 0xD6, 0xB0];
 const WARN: [u8; 3] = [0xF2, 0xB8, 0x4B];
-const DARK: [u8; 3] = [0x16, 0x20, 0x1D];
+const DARK: [u8; 3] = [0x00, 0x00, 0x00];
+
+/// Pixel-Glocke wie assets/notify.svg: `#` Körper, `e` Augen
+const BELL: [&str; 16] = [
+    "................",
+    ".......##.......",
+    "......####......",
+    ".....######.....",
+    ".....######.....",
+    "....########....",
+    "....########....",
+    "....########....",
+    "...##########...",
+    "..###e####e###..",
+    "..############..",
+    "..############..",
+    ".##############.",
+    ".##############.",
+    "......####......",
+    ".......##.......",
+];
+/// Haken statt Augen, wenn der Eintrag gespeichert ist
+const CHECK: [(usize, usize); 6] = [(4, 10), (5, 11), (6, 10), (7, 9), (8, 8), (9, 7)];
 
 fn load_icon(state: State) -> Icon {
-    let (ring, solid) = match state {
-        State::Quiet => (ACCENT, false),
-        State::Due => (WARN, false),
-        State::Saved => (ACCENT, true),
-    };
-    let center = (ICON_SIZE as f32 - 1.0) / 2.0;
+    let body = if state == State::Due { WARN } else { ACCENT };
+    let cell = (ICON_SIZE / 16) as usize;
     let mut rgba = Vec::with_capacity((ICON_SIZE * ICON_SIZE * 4) as usize);
-    for y in 0..ICON_SIZE {
-        for x in 0..ICON_SIZE {
-            let dist = ((x as f32 - center).powi(2) + (y as f32 - center).powi(2)).sqrt();
-            let [r, g, b] = if solid || dist < 5.0 || dist >= 10.5 { ring } else { DARK };
-            let a = ((15.5 - dist).clamp(0.0, 1.0) * 255.0) as u8;
+    for y in 0..ICON_SIZE as usize {
+        for x in 0..ICON_SIZE as usize {
+            let (cx, cy) = (x / cell, y / cell);
+            let c = BELL[cy].as_bytes()[cx];
+            let checked = state == State::Saved && CHECK.contains(&(cx, cy));
+            let eye = c == b'e' && state != State::Saved;
+            let [r, g, b] = if checked || eye { DARK } else { body };
+            let a = if c == b'.' { 0 } else { 255 };
             rgba.extend_from_slice(&[r, g, b, a]);
         }
     }
