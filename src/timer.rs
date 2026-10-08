@@ -1,18 +1,18 @@
-use crate::journal::DayKind;
+use crate::settings::{DayKind, Plan};
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday};
 
-pub const SNOOZE_MINUTES: i64 = 15;
 /// Ein Zeitpunkt, der länger her ist (z. B. nach dem Standby), gilt als verpasst statt als fällig
 const FRESH_MINUTES: i64 = 2;
 
 /// Geprüfte Arbeitszeit-Einstellungen für den Timer
 #[derive(Debug, Clone, PartialEq)]
 pub struct Schedule {
-    pub work_days: Vec<Weekday>,
+    pub plan: Plan,
     pub blocks: Vec<(NaiveTime, NaiveTime)>,
     pub interval_minutes: u32,
     pub away_minutes: u32,
-    pub school_days: Vec<Weekday>,
+    /// Minuten bis zur nächsten Erinnerung nach "Später"
+    pub snooze_minutes: u32,
     pub reflection_day: Weekday,
 }
 
@@ -23,24 +23,15 @@ impl Schedule {
     }
 }
 
-/// Art des Tages: die letzte Markierung, sonst wiederkehrender Schultag, sonst Arbeitstag.
-/// `None` heisst frei (kein Arbeitstag, keine Markierung).
-pub fn effective_kind(date: NaiveDate, marked: Option<DayKind>, schedule: &Schedule) -> Option<DayKind> {
-    if marked.is_some() {
-        return marked;
-    }
-    let weekday = date.weekday();
-    if schedule.school_days.contains(&weekday) {
-        Some(DayKind::Schule)
-    } else if schedule.work_days.contains(&weekday) {
-        Some(DayKind::Arbeit)
-    } else {
-        None
-    }
+/// Art des Tages aus dem Ort: Override der Woche (`override_name`), sonst Wochenplan.
+/// `None` heisst frei (kein Ort an diesem Tag).
+pub fn effective_kind(date: NaiveDate, override_name: Option<&str>, schedule: &Schedule) -> Option<DayKind> {
+    schedule.plan.resolve(date, override_name).map(|o| o.art)
 }
 
-pub fn checkins_allowed(date: NaiveDate, marked: Option<DayKind>, schedule: &Schedule) -> bool {
-    effective_kind(date, marked, schedule) == Some(DayKind::Arbeit)
+/// Check-ins gibt es nur an Arbeitstagen, nicht bei Gibb, üK und Ferien
+pub fn checkins_allowed(date: NaiveDate, override_name: Option<&str>, schedule: &Schedule) -> bool {
+    effective_kind(date, override_name, schedule) == Some(DayKind::Arbeit)
 }
 
 fn minutes(t: NaiveTime) -> u32 {
@@ -90,7 +81,7 @@ fn latest_point(schedule: &Schedule, now: NaiveDateTime) -> Option<NaiveDateTime
     due_points(schedule, now.date()).into_iter().filter(|p| *p <= now).max()
 }
 
-/// Entscheidet, wann ein Check-in fällig wird. Zeit, Leerlauf und Tagesart kommen von aussen.
+/// Entscheidet, wann ein Check-in fällig wird. Zeit, Leerlauf und Ort-Override kommen von aussen.
 pub struct Timer {
     schedule: Schedule,
     handled: Option<NaiveDateTime>,
@@ -106,7 +97,7 @@ impl Timer {
     }
 
     pub fn snooze(&mut self, now: NaiveDateTime) {
-        self.snooze_until = Some(now + Duration::minutes(SNOOZE_MINUTES));
+        self.snooze_until = Some(now + Duration::minutes(i64::from(self.schedule.snooze_minutes)));
     }
 
     /// Der Eintrag wurde geschrieben oder übersprungen
@@ -116,8 +107,8 @@ impl Timer {
     }
 
     /// `true`, wenn jetzt ein Check-in fällig wird
-    pub fn tick(&mut self, now: NaiveDateTime, away: bool, marked: Option<DayKind>) -> bool {
-        let allowed = checkins_allowed(now.date(), marked, &self.schedule);
+    pub fn tick(&mut self, now: NaiveDateTime, away: bool, override_name: Option<&str>) -> bool {
+        let allowed = checkins_allowed(now.date(), override_name, &self.schedule);
         let inside = allowed && in_work_time(&self.schedule, now.time());
 
         let mut wanted = false;
@@ -185,7 +176,7 @@ mod tests {
         NaiveTime::from_hms_opt(h, m, s).unwrap()
     }
 
-    /// Wie `tick`, nur mit Mo 5.10. als Standardtag und anwesend
+    /// Wie `tick`, nur ohne Override
     fn run(timer: &mut Timer, now: NaiveDateTime, away: bool) -> bool {
         timer.tick(now, away, None)
     }
@@ -258,32 +249,30 @@ mod tests {
 
     #[test]
     fn marked_days_decide() {
-        let mut s = schedule();
-        s.school_days = vec![Weekday::Wed];
-        // Mittwoch ist Schule, wenn nichts anderes markiert ist
-        let mut timer = Timer::new(s.clone(), dt(7, 8, 0, 0));
-        assert!(!timer.tick(dt(7, 9, 0, 0), false, None));
-        // Markierung Arbeit überschreibt den Schultag
-        let mut timer = Timer::new(s.clone(), dt(7, 8, 0, 0));
-        assert!(timer.tick(dt(7, 9, 0, 0), false, Some(DayKind::Arbeit)));
-        // Krank, Ferien, ÜK: keine Check-ins
-        for kind in [DayKind::Krank, DayKind::Ferien, DayKind::Uek, DayKind::Schule] {
-            let mut timer = Timer::new(s.clone(), dt(5, 8, 0, 0));
-            assert!(!timer.tick(dt(5, 9, 0, 0), false, Some(kind)), "{kind:?}");
+        // Donnerstag (8.) ist laut Wochenplan Gibb: keine Check-ins
+        let mut timer = Timer::new(schedule(), dt(8, 8, 0, 0));
+        assert!(!timer.tick(dt(8, 9, 0, 0), false, None));
+        // Override Noser Young macht ihn zum Arbeitstag
+        let mut timer = Timer::new(schedule(), dt(8, 8, 0, 0));
+        assert!(timer.tick(dt(8, 9, 0, 0), false, Some("Noser Young")));
+        // Gibb, üK, Ferien: keine Check-ins, auch an einem Plan-Arbeitstag
+        for ort in ["Gibb", "üK", "Ferien", "@Ferien"] {
+            let mut timer = Timer::new(schedule(), dt(5, 8, 0, 0));
+            assert!(!timer.tick(dt(5, 9, 0, 0), false, Some(ort)), "{ort}");
         }
-        // Eine Markierung am Samstag macht ihn zum Arbeitstag
-        let mut timer = Timer::new(s, dt(10, 8, 0, 0));
-        assert!(timer.tick(dt(10, 9, 0, 0), false, Some(DayKind::Arbeit)));
+        // Ein Override am Samstag macht ihn zum Arbeitstag
+        let mut timer = Timer::new(schedule(), dt(10, 8, 0, 0));
+        assert!(timer.tick(dt(10, 9, 0, 0), false, Some("Noser Young")));
     }
 
     #[test]
-    fn marking_krank_midday_stops_the_day() {
+    fn marking_ferien_midday_stops_the_day() {
         let mut timer = Timer::new(schedule(), dt(5, 8, 0, 0));
         assert!(run(&mut timer, dt(5, 9, 0, 0), false));
-        assert!(!timer.tick(dt(5, 10, 0, 0), false, Some(DayKind::Krank)));
+        assert!(!timer.tick(dt(5, 10, 0, 0), false, Some("Ferien")));
         // Wieder Arbeit: der verpasste Zeitpunkt von 10:00 wird nicht nachgeholt
-        assert!(!timer.tick(dt(5, 10, 5, 0), false, Some(DayKind::Arbeit)));
-        assert!(timer.tick(dt(5, 11, 0, 0), false, Some(DayKind::Arbeit)));
+        assert!(!timer.tick(dt(5, 10, 5, 0), false, Some("Noser Young")));
+        assert!(timer.tick(dt(5, 11, 0, 0), false, Some("Noser Young")));
     }
 
     #[test]
@@ -329,6 +318,17 @@ mod tests {
         assert!(!run(&mut timer, dt(5, 9, 19, 59), false));
         assert!(run(&mut timer, dt(5, 9, 20, 0), false));
         assert!(!run(&mut timer, dt(5, 9, 20, 15), false));
+    }
+
+    #[test]
+    fn snooze_uses_the_configured_minutes() {
+        let mut s = schedule();
+        s.snooze_minutes = 5;
+        let mut timer = Timer::new(s, dt(5, 8, 0, 0));
+        assert!(run(&mut timer, dt(5, 9, 0, 0), false));
+        timer.snooze(dt(5, 9, 5, 0));
+        assert!(!run(&mut timer, dt(5, 9, 9, 59), false));
+        assert!(run(&mut timer, dt(5, 9, 10, 0), false));
     }
 
     #[test]
@@ -416,13 +416,14 @@ mod tests {
 
     #[test]
     fn effective_kind_rules() {
-        let mut s = schedule();
-        s.school_days = vec![Weekday::Wed];
+        let s = schedule();
         let d = |day| dt(day, 0, 0, 0).date();
         assert_eq!(effective_kind(d(5), None, &s), Some(DayKind::Arbeit));
-        assert_eq!(effective_kind(d(7), None, &s), Some(DayKind::Schule));
+        assert_eq!(effective_kind(d(8), None, &s), Some(DayKind::Schule));
         assert_eq!(effective_kind(d(10), None, &s), None);
-        assert_eq!(effective_kind(d(7), Some(DayKind::Arbeit), &s), Some(DayKind::Arbeit));
-        assert_eq!(effective_kind(d(5), Some(DayKind::Ferien), &s), Some(DayKind::Ferien));
+        assert_eq!(effective_kind(d(8), Some("Noser Young"), &s), Some(DayKind::Arbeit));
+        assert_eq!(effective_kind(d(5), Some("Ferien"), &s), Some(DayKind::Ferien));
+        assert_eq!(effective_kind(d(5), Some("üK"), &s), Some(DayKind::Uek));
+        assert_eq!(effective_kind(d(10), Some("Gibb"), &s), Some(DayKind::Schule));
     }
 }

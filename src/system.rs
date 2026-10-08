@@ -1,3 +1,4 @@
+use crate::layout::Rect;
 use crate::log;
 use std::ffi::{OsString, c_void};
 use std::fs::OpenOptions;
@@ -9,8 +10,11 @@ use std::process::Command;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows_sys::Win32::System::Com::CoTaskMemFree;
+use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Graphics::Gdi::{
+    CreateRoundRectRgn, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, SetWindowRgn,
+};
+use windows_sys::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize};
 use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Registry::{
@@ -19,11 +23,19 @@ use windows_sys::Win32::System::Registry::{
 };
 use windows_sys::Win32::System::RemoteDesktop::WTSRegisterSessionNotification;
 use windows_sys::Win32::System::SystemInformation::GetTickCount;
+use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
-use windows_sys::Win32::UI::Shell::{FOLDERID_Documents, SHGetKnownFolderPath};
+use windows_sys::Win32::UI::Controls::Dialogs::{
+    GetOpenFileNameW, OFN_FILEMUSTEXIST, OFN_HIDEREADONLY, OFN_NOCHANGEDIR, OFN_PATHMUSTEXIST, OPENFILENAMEW,
+};
+use windows_sys::Win32::UI::Shell::{
+    BIF_NEWDIALOGSTYLE, BIF_RETURNONLYFSDIRS, BROWSEINFOW, FOLDERID_Documents, SHBrowseForFolderW,
+    SHGetKnownFolderPath, SHGetPathFromIDListW,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, MB_ICONERROR, MB_OK, MSG, MessageBoxW,
-    RegisterClassW, WNDCLASSW,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GA_ROOTOWNER, GetAncestor, GetForegroundWindow, GetMessageW,
+    HWND_TOPMOST, MB_ICONERROR, MB_OK, MSG, MessageBoxW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SetWindowPos, ShowWindow, WNDCLASSW,
 };
 
 const WM_POWERBROADCAST: u32 = 0x0218;
@@ -45,6 +57,128 @@ static SUSPENDED: AtomicBool = AtomicBool::new(false);
 fn idle_from_ticks(now: u32, last_input: u32) -> Duration {
     // Der Tick-Zähler läuft nach etwa 49 Tagen über, wrapping_sub bleibt dabei richtig
     Duration::from_millis(u64::from(now.wrapping_sub(last_input)))
+}
+
+/// Sperre gegen eine zweite Instanz: ein benanntes Mutex, das bis zum Prozessende gehalten wird.
+/// Gibt `false` zurück, wenn schon eine Instanz läuft.
+pub fn acquire_single_instance() -> bool {
+    let name = wide(r"Local\Notify-Arbeitsjournal-Instanz");
+    // SAFETY: der Name ist nullterminiert, die Sicherheitsattribute dürfen fehlen. Das Handle bleibt absichtlich offen.
+    unsafe {
+        let handle = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
+        !handle.is_null() && GetLastError() != ERROR_ALREADY_EXISTS
+    }
+}
+
+/// Zeigt ein Fenster, ohne ihm den Fokus zu geben, und hält es im Vordergrund
+pub fn show_no_activate(hwnd: isize) {
+    let hwnd = hwnd as HWND;
+    // SAFETY: `hwnd` gehört zu einem lebenden Fenster dieser App
+    unsafe {
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+}
+
+/// Arbeitsbereich (ohne Taskleiste) des Monitors, auf dem das Fenster liegt, in physischen Pixeln
+pub fn work_area(hwnd: isize) -> Option<Rect> {
+    // SAFETY: `hwnd` gehört zu einem lebenden Fenster, `info` ist initialisiert und `cbSize` gesetzt
+    unsafe {
+        let monitor = MonitorFromWindow(hwnd as HWND, MONITOR_DEFAULTTONEAREST);
+        let mut info: MONITORINFO = std::mem::zeroed();
+        info.cbSize = size_of::<MONITORINFO>() as u32;
+        if monitor.is_null() || GetMonitorInfoW(monitor, &mut info) == 0 {
+            return None;
+        }
+        let r = info.rcWork;
+        Some(Rect::new(r.left, r.top, r.right - r.left, r.bottom - r.top))
+    }
+}
+
+/// Schneidet die Ecken des Fensters rund aus (Radius in Pixeln). Alles ausserhalb ist kein Teil des Fensters,
+/// darum gibt es keine eckigen Kanten und keine hellen Pixel in den Ecken.
+pub fn round_window(hwnd: isize, width: i32, height: i32, radius: i32) {
+    if width <= 0 || height <= 0 {
+        return;
+    }
+    // SAFETY: `hwnd` gehört zu einem lebenden Fenster; nach einem erfolgreichen SetWindowRgn gehört die Region dem System
+    unsafe {
+        let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2);
+        if !region.is_null() {
+            SetWindowRgn(hwnd as HWND, region, 1);
+        }
+    }
+}
+
+/// Ist das Fenster (oder ein Fenster, das ihm gehört, z. B. ein Dateidialog) im Vordergrund?
+pub fn is_foreground_family(hwnd: isize) -> bool {
+    // SAFETY: keine Voraussetzungen, `GetAncestor` verträgt jedes Fensterhandle
+    unsafe {
+        let fg = GetForegroundWindow();
+        !fg.is_null() && (fg == hwnd as HWND || GetAncestor(fg, GA_ROOTOWNER) == hwnd as HWND)
+    }
+}
+
+fn wide_z(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn from_wide(buf: &[u16]) -> String {
+    let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    String::from_utf16_lossy(&buf[..len])
+}
+
+/// Ordnerdialog. Blockiert, darum nur aus einem eigenen Thread aufrufen.
+pub fn pick_folder(owner: isize, title: &str) -> Option<PathBuf> {
+    let title = wide_z(title);
+    let mut name = [0u16; 260];
+    let mut path = [0u16; 260];
+    // SAFETY: alle Puffer leben bis zum Ende; COM wird für diesen Thread initialisiert und wieder freigegeben
+    unsafe {
+        let com = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+        let mut info: BROWSEINFOW = std::mem::zeroed();
+        info.hwndOwner = owner as HWND;
+        info.pszDisplayName = name.as_mut_ptr();
+        info.lpszTitle = title.as_ptr();
+        info.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+        let pidl = SHBrowseForFolderW(&info);
+        let picked = if pidl.is_null() {
+            None
+        } else {
+            let ok = SHGetPathFromIDListW(pidl, path.as_mut_ptr()) != 0;
+            CoTaskMemFree(pidl as *const c_void);
+            ok.then(|| PathBuf::from(from_wide(&path)))
+        };
+        if com >= 0 {
+            CoUninitialize();
+        }
+        picked
+    }
+}
+
+/// Dateidialog für eine Word-Vorlage (.docx). Blockiert, darum nur aus einem eigenen Thread aufrufen.
+pub fn pick_docx(owner: isize, title: &str) -> Option<PathBuf> {
+    let title = wide_z(title);
+    let filter: Vec<u16> = "Word-Vorlage (*.docx)\0*.docx\0\0".encode_utf16().collect();
+    let mut file = [0u16; 1024];
+    // SAFETY: alle Puffer leben bis zum Ende des Aufrufs, `lStructSize` ist gesetzt
+    unsafe {
+        let mut ofn: OPENFILENAMEW = std::mem::zeroed();
+        ofn.lStructSize = size_of::<OPENFILENAMEW>() as u32;
+        ofn.hwndOwner = owner as HWND;
+        ofn.lpstrFilter = filter.as_ptr();
+        ofn.lpstrFile = file.as_mut_ptr();
+        ofn.nMaxFile = file.len() as u32;
+        ofn.lpstrTitle = title.as_ptr();
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_HIDEREADONLY;
+        (GetOpenFileNameW(&mut ofn) != 0).then(|| PathBuf::from(from_wide(&file)))
+    }
+}
+
+/// Blendet ein Fenster aus, auch wenn es ohne tao eingeblendet wurde (`show_no_activate`)
+pub fn hide_window(hwnd: isize) {
+    // SAFETY: `hwnd` gehört zu einem lebenden Fenster dieser App
+    unsafe { ShowWindow(hwnd as HWND, SW_HIDE) };
 }
 
 /// Zeit seit der letzten Tastatur- oder Mauseingabe

@@ -1,10 +1,9 @@
 use crate::git::Commit;
-use crate::journal::DayKind;
 use crate::recap::{Recap, State};
-use crate::widget::Widget;
-use crate::windows::{EntryMsg, SettingsMsg, TodayMsg};
+use crate::settings::DayKind;
+use crate::windows::{BarMsg, ReminderMsg, SettingsMsg, WeekMsg};
 use tao::event_loop::{ControlFlow, EventLoop};
-use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, Submenu};
+use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 const ICON_SIZE: u32 = 32;
@@ -33,24 +32,21 @@ fn load_icon(state: State) -> Icon {
 
 pub enum UserEvent {
     Menu(MenuEvent),
-    Hook(u64, String),
-    Status(String),
-    Gone(u64),
-    Resize(f64, f64),
-    Drag,
-    Entry(EntryMsg),
+    Bar(BarMsg),
+    Week(WeekMsg),
+    Settings(SettingsMsg),
+    Reminder(ReminderMsg),
     Hotkey,
     Commits(Vec<Commit>),
-    Today(TodayMsg),
-    Settings(SettingsMsg),
+    /// Ergebnis des Datei- oder Ordnerdialogs der Einstellungen (`None`: abgebrochen)
+    Picked { field: String, path: Option<String> },
 }
 
-const DAY_LABELS: [(&str, DayKind); 5] = [
+const DAY_LABELS: [(&str, DayKind); 4] = [
     ("Arbeit", DayKind::Arbeit),
-    ("Schule", DayKind::Schule),
+    ("Gibb", DayKind::Schule),
     ("ÜK", DayKind::Uek),
     ("Ferien", DayKind::Ferien),
-    ("Krank", DayKind::Krank),
 ];
 
 fn tooltip(state: State) -> &'static str {
@@ -65,10 +61,9 @@ pub struct Tray {
     icon: TrayIcon,
     state: State,
     write_id: MenuId,
-    reflect_id: MenuId,
+    week_id: MenuId,
     export_id: MenuId,
     export_last_id: MenuId,
-    today_id: MenuId,
     journal_id: MenuId,
     settings_id: MenuId,
     day_ids: Vec<(MenuId, DayKind)>,
@@ -82,11 +77,10 @@ impl Tray {
             let _ = proxy.send_event(UserEvent::Menu(e));
         }));
 
-        let write = MenuItem::new("Eintrag jetzt schreiben", true, None);
-        let reflect = MenuItem::new("Wochenreflexion schreiben", true, None);
+        let write = MenuItem::new("Eintrag schreiben", true, None);
+        let week = MenuItem::new("Woche", true, None);
         let export = MenuItem::new("Woche exportieren", true, None);
         let export_last = MenuItem::new("Letzte Woche exportieren", true, None);
-        let entries = MenuItem::new("Heutige Einträge", true, None);
         let journal = MenuItem::new("Journal-Ordner öffnen", true, None);
         let settings = MenuItem::new("Einstellungen ...", true, None);
         let today = Submenu::new("Heute ist ...", true);
@@ -98,15 +92,19 @@ impl Tray {
         }
         let quit = MenuItem::new("Beenden", true, None);
         let menu = Menu::new();
-        menu.append(&write).expect("menu write failed to build");
-        menu.append(&reflect).expect("menu reflect failed to build");
-        menu.append(&today).expect("menu today failed to build");
-        menu.append(&export).expect("menu export failed to build");
-        menu.append(&export_last).expect("menu export last failed to build");
-        menu.append(&entries).expect("menu entries failed to build");
-        menu.append(&journal).expect("menu journal failed to build");
-        menu.append(&settings).expect("menu settings failed to build");
-        menu.append(&quit).expect("menu quit failed to build");
+        menu.append_items(&[
+            &write,
+            &week,
+            &today,
+            &PredefinedMenuItem::separator(),
+            &export,
+            &export_last,
+            &journal,
+            &settings,
+            &PredefinedMenuItem::separator(),
+            &quit,
+        ])
+        .expect("menu failed to build");
 
         let icon = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
@@ -119,10 +117,9 @@ impl Tray {
             icon,
             state: State::Quiet,
             write_id: write.id().clone(),
-            reflect_id: reflect.id().clone(),
+            week_id: week.id().clone(),
             export_id: export.id().clone(),
             export_last_id: export_last.id().clone(),
-            today_id: entries.id().clone(),
             journal_id: journal.id().clone(),
             settings_id: settings.id().clone(),
             day_ids,
@@ -130,20 +127,13 @@ impl Tray {
         }
     }
 
-    pub fn handle_event(
-        &self,
-        event: UserEvent,
-        widget: &mut Widget,
-        recap: &mut Recap,
-        control_flow: &mut ControlFlow,
-    ) {
+    pub fn handle_event(&self, event: UserEvent, recap: &mut Recap, control_flow: &mut ControlFlow) {
         match event {
             UserEvent::Menu(e) if e.id == self.quit_id => *control_flow = ControlFlow::Exit,
-            UserEvent::Menu(e) if e.id == self.write_id => recap.open_checkin(),
-            UserEvent::Menu(e) if e.id == self.reflect_id => recap.open_reflection(),
+            UserEvent::Menu(e) if e.id == self.write_id => recap.open_entry(),
+            UserEvent::Menu(e) if e.id == self.week_id => recap.open_week(),
             UserEvent::Menu(e) if e.id == self.export_id => recap.export(false),
             UserEvent::Menu(e) if e.id == self.export_last_id => recap.export(true),
-            UserEvent::Menu(e) if e.id == self.today_id => recap.open_today(),
             UserEvent::Menu(e) if e.id == self.journal_id => recap.open_journal_folder(),
             UserEvent::Menu(e) if e.id == self.settings_id => recap.open_settings(),
             UserEvent::Menu(e) => {
@@ -151,12 +141,13 @@ impl Tray {
                     recap.set_day(kind);
                 }
             }
-            UserEvent::Entry(msg) => recap.handle_entry(msg),
-            UserEvent::Hotkey => recap.open_quick(),
-            UserEvent::Commits(commits) => recap.ingest(commits),
-            UserEvent::Today(msg) => recap.handle_today(msg),
+            UserEvent::Bar(msg) => recap.handle_bar(msg),
+            UserEvent::Week(msg) => recap.handle_week(msg),
             UserEvent::Settings(msg) => recap.handle_settings(msg),
-            other => widget.handle_user(other),
+            UserEvent::Reminder(msg) => recap.handle_reminder(msg),
+            UserEvent::Hotkey => recap.toggle_bar(),
+            UserEvent::Commits(commits) => recap.ingest(commits),
+            UserEvent::Picked { field, path } => recap.picked(field, path),
         }
     }
 

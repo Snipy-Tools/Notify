@@ -1,4 +1,4 @@
-use crate::journal::Entry;
+use crate::journal::{Entry, Quelle};
 use crate::log;
 use chrono::{DateTime, Days, NaiveDate, Utc};
 use std::collections::HashSet;
@@ -216,26 +216,21 @@ pub fn scan(config: &GitConfig, since: DateTime<Utc>) -> Vec<Commit> {
 pub fn new_commits(found: Vec<Commit>, existing: &[Entry]) -> Vec<Commit> {
     let mut known: HashSet<(String, String)> = existing
         .iter()
-        .filter_map(|e| match e {
-            Entry::Commit { repo, hash, .. } => Some((repo.clone(), hash.clone())),
-            _ => None,
-        })
+        .filter(|e| e.quelle == Quelle::Commit)
+        .filter_map(|e| Some((e.repo.clone()?, e.hash.clone()?)))
         .collect();
     found.into_iter().filter(|c| known.insert((c.repo.clone(), c.hash.clone()))).collect()
 }
 
-/// Commits seit dem letzten Eintrag (Notiz oder Reflexion). Gibt es keinen, zählen die Commits von `today`.
+/// Commits seit dem letzten manuellen Eintrag, die noch keine Dauer haben (also nicht übernommen sind).
+/// Gibt es keinen manuellen Eintrag, zählen die Commits von `today`.
 pub fn pending_commits(entries: &[Entry], today: NaiveDate) -> Vec<&Entry> {
-    let last = entries
-        .iter()
-        .filter(|e| matches!(e, Entry::Note { .. } | Entry::Reflection { .. }))
-        .map(Entry::t)
-        .max();
+    let last = entries.iter().filter(|e| e.quelle == Quelle::Manuell).map(|e| e.t).max();
     entries
         .iter()
-        .filter(|e| matches!(e, Entry::Commit { .. }))
+        .filter(|e| e.quelle == Quelle::Commit && e.stunden == 0.0)
         .filter(|e| match last {
-            Some(last) => e.t() > last,
+            Some(last) => e.t > last,
             None => e.local_date() == today,
         })
         .collect()
@@ -368,7 +363,7 @@ mod tests {
         let h = "f".repeat(40);
         let existing = vec![
             Entry::commit(at(7, 9), "notify", &h, "msg"),
-            Entry::note(at(7, 9), "x", "quick"),
+            Entry::manuell(at(7, 9), "x", 0.0),
         ];
         let found = vec![
             commit("notify", &h, at(7, 9)),
@@ -388,19 +383,16 @@ mod tests {
         let h = |c: char| c.to_string().repeat(40);
         let entries = vec![
             Entry::commit(at(6, 16), "r", &h('1'), "gestern"),
-            Entry::note(at(7, 9), "Notiz", "checkin"),
+            Entry::manuell(at(7, 9), "Notiz", 1.0),
             Entry::commit(at(7, 8), "r", &h('2'), "vor der Notiz"),
             Entry::commit(at(7, 10), "r", &h('3'), "nach der Notiz"),
-            Entry::day(at(7, 11), crate::journal::DayKind::Arbeit),
+            Entry { stunden: 0.5, ..Entry::commit(at(7, 11), "r", &h('5'), "schon übernommen") },
             Entry::commit(at(7, 11), "r", &h('4'), "noch eins"),
         ];
         let pending = pending_commits(&entries, today);
         let hashes: Vec<_> = pending
             .iter()
-            .map(|e| match e {
-                Entry::Commit { hash, .. } => hash.chars().next().unwrap(),
-                _ => '?',
-            })
+            .map(|e| e.hash.as_deref().and_then(|h| h.chars().next()).unwrap_or('?'))
             .collect();
         assert_eq!(hashes, ['3', '4']);
     }

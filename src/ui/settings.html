@@ -2,254 +2,480 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
+<!--BASE-->
 <style>
-:root {
-    --bg: #16201D;
-    --row: #1E2B27;
-    --line: #223029;
-    --text: #E8F5F1;
-    --muted: #8FA39C;
-    --accent: #3DD6B0;
-    --danger: #F26B6B;
-}
-* { box-sizing: border-box; }
-html, body {
-    height: 100%;
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: "Segoe UI", system-ui, sans-serif;
-    font-size: 16px;
-}
-[hidden] { display: none !important; }
-button { font-family: inherit; }
-body { display: flex; flex-direction: column; }
-.err {
-    padding: 0.625rem 1rem;
-    font-size: 0.8125rem;
-    color: var(--danger);
-    border-bottom: 1px solid var(--line);
-    background: #2A1C1C;
-}
-main { flex: 1; overflow-y: auto; padding: 0.5rem 1.25rem 1rem; }
-section { padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
-section:last-child { border-bottom: 0; }
-h2 { margin: 0 0 0.5rem; font-size: 0.8125rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
-.row { display: grid; grid-template-columns: 11rem 1fr; gap: 0.75rem; align-items: start; margin-bottom: 0.625rem; }
-.row > label, .row > .lab { padding-top: 0.4375rem; font-size: 0.875rem; }
-.hint { margin-top: 0.25rem; font-size: 0.75rem; color: var(--muted); }
-.days { display: flex; flex-wrap: wrap; gap: 0.25rem; }
-.days label {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 2.5rem;
-    padding: 0.375rem 0.5rem;
-    border: 1px solid var(--line);
-    border-radius: 0.375rem;
-    background: var(--row);
-    font-size: 0.8125rem;
-    cursor: pointer;
-    user-select: none;
-}
-.days input { display: none; }
-.days label:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
-input[type=text], input[type=time], select, textarea {
-    width: 100%;
-    padding: 0.4375rem 0.5rem;
-    border: 1px solid var(--line);
-    border-radius: 0.375rem;
-    background: #111917;
-    color: var(--text);
-    font-family: inherit;
-    font-size: 0.875rem;
-}
-textarea { min-height: 4rem; resize: vertical; font-family: Consolas, monospace; font-size: 0.8125rem; }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
-input.short { width: 6rem; }
-.block { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.375rem; }
-.block input { width: 7rem; }
-.link {
-    padding: 0.25rem 0.5rem;
-    border: 0;
-    border-radius: 0.25rem;
-    background: none;
-    color: var(--accent);
-    font-size: 0.8125rem;
-    cursor: pointer;
-}
-.link:hover { background: var(--row); }
-.link.danger { color: var(--danger); }
-.check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; padding-top: 0.4375rem; }
-footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1.25rem; border-top: 1px solid var(--line); }
-.btn {
-    padding: 0.5rem 1rem;
-    border: 0;
-    border-radius: 0.375rem;
-    background: none;
-    color: var(--text);
-    font-size: 0.875rem;
-    cursor: pointer;
-}
-.btn:hover { background: var(--row); }
-.btn.primary { background: var(--accent); color: var(--bg); font-weight: 600; }
-.btn.primary:hover { filter: brightness(1.1); }
+.tabs-wrap { padding: 24px 28px 0; flex: none; }
+.tabs { display: inline-flex; background: var(--card); border-radius: var(--r-row); padding: 4px; gap: 4px; max-width: 100%; flex-wrap: wrap; }
+.tabs button { height: 34px; padding: 0 16px; border: 0; border-radius: 9px; background: transparent; color: var(--mfg); font-size: 13px; font-weight: 500; }
+.tabs button:hover { color: var(--fg); }
+.tabs button[aria-selected=true] { background: var(--fg); color: #0a0a0a; font-weight: 600; }
+main { flex: 1; min-height: 0; overflow-y: auto; padding: 28px; }
+.pane { display: flex; flex-direction: column; gap: 26px; }
+.pane.tight { gap: 24px; }
+.pane[hidden] { display: none; }
+.row2 { display: flex; gap: 10px; }
+.row2 input { flex: 1; min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.grid2.g16 { gap: 16px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.sec { display: flex; flex-direction: column; gap: 12px; }
+.sec h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.sec .sub { font-size: 12px; color: var(--mfg); line-height: 1.45; }
+.sec .hd { display: flex; flex-direction: column; gap: 3px; }
+.seg.f44 { height: 44px; }
+.seg.f44 button { min-height: 0; height: 100%; }
+.plan { background: var(--card); border-radius: var(--r-card); padding: 6px 18px; display: flex; flex-direction: column; }
+.plan .pr { display: flex; align-items: center; gap: 16px; min-height: 52px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.plan .pr:last-child { border-bottom: 0; }
+.plan .pr > span { width: 90px; flex: none; font-size: 14px; font-weight: 500; }
+.plan .pr .seg { flex: 1; min-width: 0; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); }
+.plan .pr .seg button[aria-pressed=true] { font-weight: 600; }
+.soll { display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: var(--mfg); min-width: 0; }
+.soll > span { display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.fixed { background: var(--card); border-radius: var(--r-card); padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.fixed .ft { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.fixed textarea { height: auto; min-height: 38px; background: var(--bg); border-radius: 10px; padding: 9px 12px; font-size: 13px; line-height: 1.4; overflow: hidden; }
+.block { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; color: var(--mfg); flex-wrap: wrap; }
+.block input[type=time] { width: 9rem; }
+.info { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; color: var(--mfg); line-height: 1.45; }
+.info svg { margin-top: 1px; }
+footer { display: flex; align-items: center; gap: 10px; padding: 16px 28px 24px; border-top: 1px solid var(--line); flex: none; }
+footer .msg { flex: 1; min-width: 0; font-size: 12px; color: var(--mfg); overflow-wrap: anywhere; line-height: 1.4; }
+footer .msg.bad { color: var(--over); }
+footer .btn.primary { padding: 0 20px; }
 </style>
 </head>
 <body>
-<div class="err" id="err" hidden></div>
-<main>
-    <section>
-        <h2>Check-ins</h2>
-        <div class="row"><div class="lab">Arbeitstage</div><div class="days" id="work-days"></div></div>
-        <div class="row">
-            <div class="lab">Arbeitszeiten</div>
-            <div>
-                <div id="blocks"></div>
-                <button class="link" id="add-block">+ Zeitblock hinzufügen</button>
-                <div class="hint">Blöcke dürfen sich nicht überschneiden, z. B. 08:00–12:00 und 13:00–17:00.</div>
+<div class="window">
+    <div class="tabs-wrap">
+        <div class="tabs" role="tablist">
+            <button role="tab" data-tab="allgemein" aria-selected="true">Allgemein</button>
+            <button role="tab" data-tab="wochenplan" aria-selected="false">Wochenplan</button>
+            <button role="tab" data-tab="vorlage" aria-selected="false">Vorlage</button>
+            <button role="tab" data-tab="erinnerungen" aria-selected="false">Erinnerungen</button>
+        </div>
+    </div>
+
+    <main>
+        <div class="pane" id="tab-allgemein">
+            <label class="field">Journal-Ordner
+                <div class="row2">
+                    <input type="text" id="journal-dir" spellcheck="false" placeholder="Leer: %APPDATA%\notify\weeks">
+                    <button class="btn in" type="button" data-pick="journal-dir" data-kind="folder">Wählen</button>
+                </div>
+                <span class="hint">Eine Datei pro Kalenderwoche. Ein OneDrive-Ordner synchronisiert sie automatisch.</span>
+            </label>
+            <label class="field">Exportordner
+                <div class="row2">
+                    <input type="text" id="export-dir" spellcheck="false" placeholder="Leer: Dokumente\Notify">
+                    <button class="btn in" type="button" data-pick="export-dir" data-kind="folder">Wählen</button>
+                </div>
+            </label>
+            <div class="grid2">
+                <label class="field">Tastenkürzel
+                    <input type="text" id="hotkey" spellcheck="false" placeholder="Ctrl+Alt+J">
+                    <span class="hint">Mindestens ein Modifier (Ctrl, Alt, Shift, Win) und eine Taste (A–Z, 0–9, F1–F12).</span>
+                </label>
+                <div class="field">Aufklapprichtung
+                    <div class="seg f44" id="dir" role="group" aria-label="Aufklapprichtung" style="grid-template-columns: repeat(3, minmax(0, 1fr))">
+                        <button type="button" data-v="auto" aria-pressed="true">Automatisch</button>
+                        <button type="button" data-v="unten" aria-pressed="false">Unten</button>
+                        <button type="button" data-v="oben" aria-pressed="false">Oben</button>
+                    </div>
+                    <span class="hint">Automatisch: dorthin, wo mehr Platz bis zum Bildschirmrand ist.</span>
+                </div>
+            </div>
+            <div class="toggle-card">
+                <div class="t"><b>Mit Windows starten</b><span>Die Leiste ist nach der Anmeldung sofort da.</span></div>
+                <button class="switch" id="autostart" role="switch" aria-checked="false" aria-label="Mit Windows starten"></button>
             </div>
         </div>
-        <div class="row">
-            <label for="interval">Intervall (Minuten)</label>
-            <div><input class="short" type="text" id="interval" inputmode="numeric"><div class="hint">Wie oft ein Eintrag fällig wird (1 bis 480).</div></div>
+
+        <div class="pane" id="tab-wochenplan" hidden>
+            <div class="sec">
+                <div class="hd">
+                    <h2>Standard-Wochenplan</h2>
+                    <span class="sub">Gilt für jede Woche, bis du sie in der Wochenansicht änderst. Einen gewählten Ort nochmals anklicken = frei.</span>
+                </div>
+                <div class="plan" id="plan"></div>
+            </div>
+            <div class="sec">
+                <h2>Tagessoll in Stunden</h2>
+                <div class="grid4" id="orte"></div>
+            </div>
+            <div class="toggle-card">
+                <div class="t"><b>Rest automatisch auf die letzte Zeile buchen</b><span>Standard: aus. Sonst nur über den Knopf in der Leiste.</span></div>
+                <button class="switch" id="rest" role="switch" aria-checked="false" aria-label="Rest automatisch buchen"></button>
+            </div>
         </div>
-        <div class="row">
-            <label for="away">Weg-Schwelle (Minuten)</label>
-            <div><input class="short" type="text" id="away" inputmode="numeric"><div class="hint">So lange ohne Eingabe gilt als weg, dann kommt kein Check-in (1 bis 240).</div></div>
+
+        <div class="pane tight" id="tab-vorlage" hidden>
+            <div class="grid2 g16">
+                <label class="field">Nachname<input type="text" id="nachname" autocomplete="off"></label>
+                <label class="field">Vorname<input type="text" id="vorname" autocomplete="off"></label>
+            </div>
+            <label class="field">Word-Vorlage
+                <div class="row2">
+                    <input type="text" id="vorlage" spellcheck="false" placeholder="Leer: mitgelieferte Vorlage">
+                    <button class="btn in" type="button" data-pick="vorlage" data-kind="docx">Wählen</button>
+                </div>
+                <span class="hint wrap" id="file-preview"></span>
+            </label>
+            <div><button class="btn text" id="save-template" type="button">Mitgelieferte Vorlage in den Exportordner speichern</button></div>
+            <div class="sec">
+                <h2>Feste Texte für Ferien und üK</h2>
+                <div class="grid2 g16" id="auto-texts"></div>
+            </div>
         </div>
-        <div class="row"><div class="lab">Schultage</div><div><div class="days" id="school-days"></div><div class="hint">An diesen Tagen gibt es keine Check-ins, wenn der Tag nicht anders markiert ist.</div></div></div>
-        <div class="row">
-            <label for="reflection-day">Reflexionstag</label>
-            <select id="reflection-day"></select>
+
+        <div class="pane tight" id="tab-erinnerungen" hidden>
+            <div class="grid3">
+                <label class="field">Intervall (Minuten)<input type="text" id="interval" inputmode="numeric"></label>
+                <label class="field">Später erinnern (Minuten)<input type="text" id="snooze" inputmode="numeric"></label>
+                <label class="field">Weg-Schwelle (Minuten)<input type="text" id="away" inputmode="numeric"></label>
+            </div>
+            <div class="toggle-card">
+                <div class="t"><b>Nach neuem Git-Commit erinnern</b><span>Höchstens eine Erinnerung pro Intervall, nur in der Arbeitszeit.</span></div>
+                <button class="switch" id="commit-hint" role="switch" aria-checked="false" aria-label="Nach neuem Commit erinnern"></button>
+            </div>
+            <div class="field">Arbeitszeiten
+                <div id="blocks"></div>
+                <div><button class="btn sm" id="add-block" type="button">+ Zeitblock</button></div>
+                <span class="hint">Blöcke dürfen sich nicht überschneiden, z. B. 08:00–12:00 und 13:00–17:00.</span>
+            </div>
+            <label class="field">Wochenrückblick am
+                <select class="lg" id="reflection-day" style="max-width:14rem"></select>
+            </label>
+            <label class="field">Git-Ordner (einer pro Zeile)
+                <textarea id="git-folders" spellcheck="false" placeholder="C:\Work" style="height:64px"></textarea>
+            </label>
+            <label class="field">Meine E-Mail-Adressen für Commits (eine pro Zeile)
+                <textarea id="git-emails" spellcheck="false" placeholder="name@example.com" style="height:64px"></textarea>
+            </label>
+            <div class="info"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>Bei Gibb, üK, Ferien und gesperrtem Bildschirm gibt es keine Erinnerungen. Ohne Git-Ordner oder E-Mail-Adresse bleibt Git aus.</div>
         </div>
-    </section>
-    <section>
-        <h2>Git</h2>
-        <div class="row">
-            <label for="git-folders">Ordner mit Repos</label>
-            <div><textarea id="git-folders" spellcheck="false" placeholder="C:\Work"></textarea><div class="hint">Ein Ordner pro Zeile. Repos werden bis 4 Ebenen darunter gesucht.</div></div>
-        </div>
-        <div class="row">
-            <label for="git-emails">Meine E-Mail-Adressen</label>
-            <div><textarea id="git-emails" spellcheck="false" placeholder="name@example.com"></textarea><div class="hint">Eine Adresse pro Zeile. Nur Commits mit diesen Adressen zählen. Ohne Ordner oder Adresse bleibt Git aus.</div></div>
-        </div>
-    </section>
-    <section>
-        <h2>Export</h2>
-        <div class="row"><label for="location">Ort</label><input type="text" id="location" placeholder="@Firma"></div>
-        <div class="row">
-            <label for="hours">Arbeitszeit pro Tag (Stunden)</label>
-            <div><input class="short" type="text" id="hours" inputmode="decimal"><div class="hint">Wird nach der gemessenen Zeit auf die Einträge verteilt (0 bis 24). Bei 0 zählt nur die gemessene Zeit.</div></div>
-        </div>
-        <div class="row">
-            <label for="export-dir">Zielordner</label>
-            <div><input type="text" id="export-dir" spellcheck="false"><div class="hint">Leer lassen für Dokumente\Recapr.</div></div>
-        </div>
-    </section>
-    <section>
-        <h2>System</h2>
-        <div class="row"><div class="lab">Autostart</div><label class="check"><input type="checkbox" id="autostart"> Mit Windows starten</label></div>
-    </section>
-</main>
-<footer>
-    <button class="btn" id="cancel">Abbrechen</button>
-    <button class="btn primary" id="save">Speichern</button>
-</footer>
+    </main>
+
+    <footer>
+        <div class="msg" id="msg"></div>
+        <button class="btn" id="cancel" type="button">Abbrechen</button>
+        <button class="btn primary" id="save" type="button">Speichern</button>
+    </footer>
+</div>
 <script>
 const send = (msg) => window.ipc.postMessage(JSON.stringify(msg));
 const $ = (id) => document.getElementById(id);
-const DAYS = [["Mon", "Mo"], ["Tue", "Di"], ["Wed", "Mi"], ["Thu", "Do"], ["Fri", "Fr"], ["Sat", "Sa"], ["Sun", "So"]];
+const DAYS = [["Mon", "Montag"], ["Tue", "Dienstag"], ["Wed", "Mittwoch"], ["Thu", "Donnerstag"], ["Fri", "Freitag"], ["Sat", "Samstag"], ["Sun", "Sonntag"]];
+const AUTO_FIELDS = [["taetigkeit", "Tätigkeit"], ["rueckblick", "Wochenrückblick"], ["reflexion", "Reflexion"], ["stimmung", "Stimmung"]];
+const ACCENT = { arbeit: "var(--noser)", schule: "var(--gibb)", uek: "var(--uek)", ferien: "var(--ferien)" };
+const ART_ICON = {
+    ferien: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+    uek: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/>',
+};
+const TALL_TABS = new Set(["vorlage"]);
+let loaded = null;
+let orte = [];
+let plan = {};
+let weekInfo = { year: 0, kw: 0 };
+let lastInvalid = false;
+let currentTab = "allgemein";
 
-function dayPicker(container, selected) {
-    container.replaceChildren(...DAYS.map(([key, label]) => {
-        const l = document.createElement("label");
-        const c = document.createElement("input");
-        c.type = "checkbox";
-        c.value = key;
-        c.checked = selected.includes(key);
-        l.append(c, label);
-        return l;
-    }));
+const lines = (area) => area.value.split("\n").map((l) => l.trim()).filter((l) => l);
+const isOn = (id) => $(id).getAttribute("aria-checked") === "true";
+const setOn = (id, on) => $(id).setAttribute("aria-checked", on ? "true" : "false");
+const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+};
+const textInput = (value) => {
+    const i = document.createElement("input");
+    i.type = "text";
+    i.value = value;
+    return i;
+};
+const textArea = (value) => {
+    const t = document.createElement("textarea");
+    t.value = value;
+    t.rows = 1;
+    t.spellcheck = false;
+    return t;
+};
+function grow(t) {
+    t.style.height = "auto";
+    t.style.height = t.scrollHeight + 2 + "px";
 }
 
-const picked = (container) => [...container.querySelectorAll("input:checked")].map((c) => c.value);
-const lines = (area) => area.value.split("\n").map((l) => l.trim()).filter((l) => l);
+function showTab(name) {
+    currentTab = name;
+    for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", b.dataset.tab === name ? "true" : "false");
+    for (const p of document.querySelectorAll(".pane")) p.hidden = p.id !== "tab-" + name;
+    document.querySelector("main").scrollTop = 0;
+    send({ op: "tall", tall: TALL_TABS.has(name) });
+    if (name === "vorlage") document.querySelectorAll("#auto-texts textarea").forEach(grow);
+}
+
+function setSeg(group, value) {
+    for (const b of group.querySelectorAll("button")) b.setAttribute("aria-pressed", b.dataset.v === value ? "true" : "false");
+}
+const segValue = (group) => group.querySelector('button[aria-pressed="true"]')?.dataset.v;
 
 function addBlock(start, end) {
-    const row = document.createElement("div");
-    row.className = "block";
+    const row = el("div", "block");
     const a = document.createElement("input");
     const b = document.createElement("input");
     a.type = b.type = "time";
     a.value = start;
     b.value = end;
-    const remove = document.createElement("button");
-    remove.className = "link danger";
-    remove.textContent = "Entfernen";
-    remove.onclick = () => row.remove();
+    const remove = el("button", "btn text", "Entfernen");
+    remove.type = "button";
+    remove.onclick = () => { row.remove(); revalidate(); };
+    a.addEventListener("input", revalidate);
+    b.addEventListener("input", revalidate);
     row.append(a, "bis", b, remove);
     $("blocks").append(row);
 }
 
+function slug(s) {
+    return s.toLowerCase().replace(/[\\\/:*?"<>|\u0000-\u001f]/g, "").split(/\s+/).filter(Boolean).join("-");
+}
+function updatePreview() {
+    const kw = String(weekInfo.kw).padStart(2, "0");
+    const n = slug($("nachname").value) || "nachname";
+    const v = slug($("vorname").value) || "vorname";
+    $("file-preview").textContent = "Dateiname: Arbeitsjournal-" + n + "-" + v + "-" + weekInfo.year + "-" + kw + ".docx";
+}
+
+function info(text, bad) {
+    $("msg").textContent = text;
+    $("msg").className = "msg" + (bad ? " bad" : "");
+}
+
+function buildPlan(s) {
+    const planned = Object.fromEntries(s.wochenplan.map((p) => [p.tag, p.ort]));
+    plan = {};
+    const rows = DAYS.filter(([key], i) => i < 5 || planned[key] !== undefined);
+    for (const [key] of rows) plan[key] = planned[key] || "";
+    $("plan").replaceChildren(...rows.map(([key, label]) => {
+        const row = el("div", "pr");
+        row.append(el("span", "", label));
+        const seg = el("div", "seg inset");
+        seg.setAttribute("role", "group");
+        seg.setAttribute("aria-label", label + " Ort");
+        for (const o of orte) {
+            const b = el("button");
+            b.type = "button";
+            b.textContent = o.name;
+            b.title = o.name;
+            b.setAttribute("aria-pressed", plan[key] === o.name ? "true" : "false");
+            b.onclick = () => {
+                plan[key] = plan[key] === o.name ? "" : o.name;
+                for (const x of seg.children) x.setAttribute("aria-pressed", x.title === plan[key] ? "true" : "false");
+            };
+            seg.append(b);
+        }
+        row.append(seg);
+        return row;
+    }));
+}
+
 // Rust ruft diese Funktionen auf
 function onSettings(data) {
+    loaded = data;
+    lastInvalid = false;
     const s = data.settings;
-    $("err").hidden = true;
-    dayPicker($("work-days"), s.work_days);
-    dayPicker($("school-days"), s.school_days);
+    weekInfo = data.week;
+    info("");
+    $("journal-dir").value = s.journal_dir;
+    $("export-dir").value = s.export_dir;
+    $("hotkey").value = s.hotkey;
+    setSeg($("dir"), s.aufklappen);
+    setOn("autostart", data.autostart);
+
+    orte = s.orte;
+    buildPlan(s);
+    $("orte").replaceChildren(...orte.map((o, i) => {
+        const wrap = el("label", "soll");
+        const name = el("span");
+        const dot = el("span", "dot");
+        dot.style.background = ACCENT[o.art] || "var(--mfg)";
+        name.append(dot, o.name);
+        const soll = textInput(String(o.tagessoll));
+        soll.dataset.index = i;
+        soll.inputMode = "decimal";
+        soll.addEventListener("input", revalidate);
+        wrap.append(name, soll);
+        return wrap;
+    }));
+    setOn("rest", s.rest_auffuellen);
+
+    $("nachname").value = s.nachname;
+    $("vorname").value = s.vorname;
+    $("vorlage").value = s.vorlage_pfad;
+    $("auto-texts").replaceChildren(...[["ferien_texte", "Ferien", "ferien"], ["uek_texte", "üK", "uek"]].map(([key, title, art]) => {
+        const card = el("div", "fixed");
+        card.dataset.key = key;
+        const head = el("div", "ft");
+        head.style.color = "var(--fg)";
+        head.insertAdjacentHTML("beforeend", '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="' + { ferien: "#84b3a6", uek: "#c2a27e" }[art] + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ART_ICON[art] + "</svg>");
+        head.append(title);
+        card.append(head);
+        for (const [f, label] of AUTO_FIELDS) {
+            const t = textArea(s[key][f]);
+            t.dataset.field = f;
+            t.addEventListener("input", () => grow(t));
+            const l = el("label", "field small");
+            l.append(label, t);
+            card.append(l);
+        }
+        return card;
+    }));
+    updatePreview();
+
+    $("interval").value = s.interval_minutes;
+    $("snooze").value = s.snooze_minutes;
+    $("away").value = s.away_minutes;
     $("blocks").replaceChildren();
     s.work_blocks.forEach((b) => addBlock(b.start, b.end));
-    $("interval").value = s.interval_minutes;
-    $("away").value = s.away_minutes;
-    $("reflection-day").replaceChildren(...DAYS.map(([key, label]) => {
-        const o = document.createElement("option");
-        o.value = key;
-        o.textContent = label;
-        o.selected = key === s.reflection_day;
-        return o;
-    }));
+    $("reflection-day").replaceChildren(...DAYS.map(([key, label]) => new Option(label, key)));
+    $("reflection-day").value = s.reflection_day;
+    setOn("commit-hint", s.commit_erinnerung);
     $("git-folders").value = s.git_folders.join("\n");
     $("git-emails").value = s.git_emails.join("\n");
-    $("location").value = s.location;
-    $("hours").value = s.hours_per_day;
-    $("export-dir").value = s.export_dir;
-    $("autostart").checked = data.autostart;
-    document.querySelector("main").scrollTop = 0;
+    showTab("allgemein");
+    revalidate();
 }
-function onError(msg) {
-    $("err").textContent = msg;
-    $("err").hidden = false;
-    document.querySelector("main").scrollTop = 0;
+function onError(msg) { info(msg, true); }
+function onTemplateSaved(path) { info("Vorlage gespeichert: " + path); }
+function onPicked(field, path) {
+    $(field).value = path;
+    $(field).dispatchEvent(new Event("input"));
+}
+function showInvalid() {
+    const p = problems();
+    if (p.length) {
+        info(p[0].msg, true);
+        if (p[0].tab !== currentTab) showTab(p[0].tab);
+        p[0].el.focus();
+    }
+}
+
+// --- Prüfung ---
+const num = (text, lo, hi) => /^\d+$/.test(text.trim()) && +text >= lo && +text <= hi;
+const HOTKEY_KEY = /^([a-z0-9]|f([1-9]|1[0-2]))$/i;
+function hotkeyOk(text) {
+    const parts = text.split("+").map((p) => p.trim().toLowerCase());
+    const mods = new Set();
+    let keys = 0;
+    for (const p of parts) {
+        if (["ctrl", "strg", "control", "alt", "shift", "umschalt", "win", "super", "meta"].includes(p)) mods.add(p);
+        else if (HOTKEY_KEY.test(p)) keys++;
+        else return false;
+    }
+    return mods.size > 0 && keys === 1;
+}
+
+function problems() {
+    const out = [];
+    const add = (tab, element, msg) => out.push({ tab, el: element, msg });
+    if (!hotkeyOk($("hotkey").value)) add("allgemein", $("hotkey"), "Das Tastenkürzel ist ungültig (Beispiel: Ctrl+Alt+J)");
+    for (const input of document.querySelectorAll("#orte input")) {
+        const t = input.value.trim().replace(",", ".");
+        const v = Number(t);
+        if (t === "" || !Number.isFinite(v) || v < 0 || v > 24) {
+            add("wochenplan", input, 'Das Tagessoll von "' + orte[+input.dataset.index].name + '" muss zwischen 0 und 24 Stunden liegen');
+        }
+    }
+    if (!num($("interval").value, 1, 480)) add("erinnerungen", $("interval"), "Das Intervall muss eine ganze Zahl von 1 bis 480 sein");
+    if (!num($("snooze").value, 1, 240)) add("erinnerungen", $("snooze"), '"Später erinnern" muss eine ganze Zahl von 1 bis 240 sein');
+    if (!num($("away").value, 1, 240)) add("erinnerungen", $("away"), "Die Weg-Schwelle muss eine ganze Zahl von 1 bis 240 sein");
+    const rows = [...$("blocks").children];
+    if (!rows.length) add("erinnerungen", $("add-block"), "Mindestens eine Arbeitszeit ist nötig");
+    for (const row of rows) {
+        const [a, b] = row.querySelectorAll("input");
+        if (!a.value || !b.value) add("erinnerungen", a.value ? b : a, "Eine Arbeitszeit ist unvollständig");
+        else if (b.value <= a.value) add("erinnerungen", b, "Arbeitszeit " + a.value + "–" + b.value + ": Das Ende muss nach dem Beginn liegen");
+    }
+    for (const mail of lines($("git-emails"))) {
+        if (!/^[^@\s]+@[^@\s]+$/.test(mail)) add("erinnerungen", $("git-emails"), '"' + mail + '" ist keine gültige E-Mail-Adresse');
+    }
+    return out;
+}
+
+function revalidate() {
+    const list = problems();
+    const bad = new Set(list.map((p) => p.el));
+    for (const e of document.querySelectorAll("input, textarea")) e.classList.toggle("bad", bad.has(e));
+    const invalid = list.length > 0;
+    if (invalid !== lastInvalid) {
+        lastInvalid = invalid;
+        send({ op: "invalid", invalid });
+    }
+    if (!invalid && $("msg").classList.contains("bad")) info("");
+    return list;
+}
+
+function autoTexts(key) {
+    const card = document.querySelector('#auto-texts [data-key="' + key + '"]');
+    return Object.fromEntries([...card.querySelectorAll("textarea")].map((i) => [i.dataset.field, i.value]));
 }
 
 function save() {
+    const list = revalidate();
+    if (list.length) {
+        info(list[0].msg, true);
+        if (list[0].tab !== currentTab) showTab(list[0].tab);
+        list[0].el.focus();
+        return;
+    }
+    const sollOrte = [...document.querySelectorAll("#orte input")].map((input) => ({
+        ...orte[+input.dataset.index],
+        tagessoll: Number(input.value.trim().replace(",", ".")),
+    }));
+    const wochenplan = Object.entries(plan).filter(([, ort]) => ort !== "").map(([tag, ort]) => ({ tag, ort }));
     send({
         op: "save",
-        work_days: picked($("work-days")),
+        journal_dir: $("journal-dir").value,
+        export_dir: $("export-dir").value,
+        hotkey: $("hotkey").value,
+        aufklappen: segValue($("dir")),
+        autostart: isOn("autostart"),
+        wochenplan,
+        orte: sollOrte,
+        rest_auffuellen: isOn("rest"),
+        nachname: $("nachname").value,
+        vorname: $("vorname").value,
+        vorlage_pfad: $("vorlage").value,
+        ferien_texte: autoTexts("ferien_texte"),
+        uek_texte: autoTexts("uek_texte"),
+        interval_minutes: $("interval").value,
+        snooze_minutes: $("snooze").value,
+        away_minutes: $("away").value,
         work_blocks: [...$("blocks").children].map((row) => {
             const [a, b] = row.querySelectorAll("input");
             return { start: a.value, end: b.value };
         }),
-        interval_minutes: $("interval").value,
-        away_minutes: $("away").value,
-        school_days: picked($("school-days")),
         reflection_day: $("reflection-day").value,
+        commit_erinnerung: isOn("commit-hint"),
         git_folders: lines($("git-folders")),
         git_emails: lines($("git-emails")),
-        location: $("location").value,
-        hours_per_day: $("hours").value,
-        export_dir: $("export-dir").value,
-        autostart: $("autostart").checked,
     });
 }
 
-$("add-block").onclick = () => addBlock("", "");
+for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => showTab(b.dataset.tab);
+for (const id of ["autostart", "rest", "commit-hint"]) $(id).onclick = () => setOn(id, !isOn(id));
+for (const b of $("dir").querySelectorAll("button")) b.onclick = () => setSeg($("dir"), b.dataset.v);
+for (const b of document.querySelectorAll("[data-pick]")) b.onclick = () => send({ op: "pick", field: b.dataset.pick, kind: b.dataset.kind });
+for (const id of ["nachname", "vorname"]) $(id).addEventListener("input", updatePreview);
+for (const id of ["hotkey", "interval", "snooze", "away", "git-emails"]) $(id).addEventListener("input", revalidate);
+$("add-block").onclick = () => { addBlock("", ""); revalidate(); };
+$("save-template").onclick = () => send({ op: "save_template" });
 $("save").onclick = save;
 $("cancel").onclick = () => send({ op: "close" });
-document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") send({ op: "close" });
-});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") send({ op: "close" }); });
+document.addEventListener("contextmenu", (e) => e.preventDefault());
 </script>
 </body>
 </html>

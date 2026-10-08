@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<!--BASE-->
+<style>
+.head { display: flex; align-items: center; gap: 8px; padding: 24px 28px 20px 28px; flex: none; cursor: grab; }
+.head .prev { margin-left: -8px; }
+.head .ttl { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.head .ttl .t { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.head .ttl .s { font-size: 12px; color: var(--mfg); overflow-wrap: anywhere; }
+.head .btn.text { flex: none; }
+.days { padding: 0 28px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; flex: none; }
+.days.wide { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.day { background: var(--card); border-radius: var(--r-card); padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.day .when { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--mfg); }
+.day .full { font-size: 11px; color: var(--mfg); line-height: 1.35; overflow-wrap: anywhere; }
+.day .sum { display: flex; flex-direction: column; gap: 6px; }
+.day .h { display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.day .h.none { color: var(--mfg); }
+.day .h svg { color: var(--ok); }
+.day[data-level=over] .h svg { color: var(--over); }
+.bulk { padding: 16px 28px 0; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; flex: none; }
+.texts { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 28px 8px; display: flex; flex-direction: column; gap: 18px; }
+.texts textarea { height: 90px; }
+.texts textarea.short { height: 60px; }
+.autonote { font-size: 12px; color: var(--mfg); line-height: 1.45; overflow-wrap: anywhere; }
+.foot { display: flex; align-items: center; gap: 12px; padding: 16px 28px 24px; border-top: 1px solid var(--line); flex: none; }
+.foot .name { flex: 1; min-width: 0; font-size: 12px; color: var(--mfg); overflow-wrap: anywhere; line-height: 1.4; }
+.foot .err-text { flex: 1; min-width: 0; }
+</style>
+</head>
+<body>
+<div class="window">
+    <div class="head" id="head">
+        <button class="icon-btn prev" id="prev" aria-label="Vorherige Woche"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="ttl"><span class="t" id="title"></span><span class="s" id="sub"></span></div>
+        <button class="btn text" id="now" hidden>Diese Woche</button>
+        <button class="icon-btn" id="next" aria-label="Nächste Woche"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+        <button class="icon-btn" id="close" aria-label="Schliessen" title="Schliessen (Esc)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </div>
+
+    <div class="days" id="days"></div>
+
+    <div class="bulk">
+        <button class="btn sm" id="all-uek">Ganze Woche = üK</button>
+        <button class="btn sm" id="all-ferien">Ganze Woche = Ferien</button>
+        <button class="btn text" id="all-plan">Auf Standardplan zurücksetzen</button>
+    </div>
+
+    <div class="texts">
+        <div class="autonote" id="auto" hidden></div>
+        <label class="field">Wochenrückblick<textarea id="rueckblick"></textarea></label>
+        <label class="field">Reflexion<textarea id="reflexion"></textarea></label>
+        <label class="field">Stimmung der Woche<textarea id="stimmung" class="short"></textarea></label>
+    </div>
+
+    <div class="foot">
+        <div class="name" id="name"></div>
+        <div class="err-text" id="err" hidden></div>
+        <button class="btn primary" id="export"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>Als Word exportieren</button>
+    </div>
+</div>
+<script>
+const send = (msg) => window.ipc.postMessage(JSON.stringify(msg));
+const $ = (id) => document.getElementById(id);
+const FIELDS = ["rueckblick", "reflexion", "stimmung"];
+const ACCENT = { arbeit: "var(--noser)", schule: "var(--gibb)", uek: "var(--uek)", ferien: "var(--ferien)" };
+const CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+const UP = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m5 12 7-7 7 7"/></svg>';
+let week = null;
+
+function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+}
+
+function saveTexts() {
+    send({ op: "set_texts", rueckblick: $("rueckblick").value, reflexion: $("reflexion").value, stimmung: $("stimmung").value });
+}
+
+function dayCard(day, orte) {
+    const card = el("div", "day");
+    card.dataset.level = day.level;
+    card.style.setProperty("--accent", ACCENT[day.art] || "var(--mfg)");
+
+    const when = el("div", "when");
+    const dot = el("span", "dot");
+    dot.style.visibility = day.art ? "visible" : "hidden";
+    when.append(el("span", "", day.label), dot);
+
+    const label = el("label");
+    label.append(el("span", "sr", "Ort " + day.weekday));
+    const sel = document.createElement("select");
+    const names = day.ort === "" ? [["", "Frei"]] : [];
+    names.push(...orte.map((n) => [n, n]));
+    sel.replaceChildren(...names.map(([v, t]) => new Option(t, v)));
+    sel.value = day.ort;
+    sel.title = day.ort || "Frei";
+    sel.onchange = () => send({ op: "set_ort", date: day.date, ort: sel.value });
+    label.append(sel);
+
+    const sum = el("div", "sum");
+    const h = el("div", "h num" + (day.level === "none" ? " none" : ""));
+    h.append(day.hours === "" ? "–" : day.hours + " h");
+    if (day.level === "done") h.insertAdjacentHTML("beforeend", CHECK);
+    if (day.level === "over") h.insertAdjacentHTML("beforeend", UP);
+    sum.append(h);
+    if (day.level === "open" && day.percent > 0) {
+        const bar = el("div", "bar thin");
+        const fill = el("i");
+        fill.style.width = day.percent + "%";
+        bar.append(fill);
+        sum.append(bar);
+    }
+    card.append(when, label);
+    // ein Select kürzt lange Namen: der ganze Name steht darunter
+    if (day.ort.length > 14) card.append(el("div", "full", day.ort));
+    card.append(sum);
+    return card;
+}
+
+// Rust ruft diese Funktionen auf
+function onWeek(d) {
+    week = d;
+    $("err").hidden = true;
+    $("name").hidden = false;
+    $("title").textContent = d.title;
+    $("sub").textContent = d.range + " · " + d.plan;
+    $("now").hidden = d.is_current;
+    // lange Ortsnamen brauchen breitere Karten, damit nichts abgeschnitten wird
+    $("days").classList.toggle("wide", d.orte.some((n) => n.length > 11));
+    $("days").replaceChildren(...d.days.map((day) => dayCard(day, d.orte)));
+    for (const f of FIELDS) {
+        const el = $(f);
+        if (document.activeElement !== el) el.value = d.texts[f];
+        el.placeholder = d.preview[f];
+    }
+    const auto = $("auto");
+    auto.hidden = !d.auto;
+    auto.textContent = d.auto
+        ? "Reine " + (d.auto === "uek" ? "üK" : "Ferien") + "-Woche: leere Felder werden beim Export automatisch mit den festen Texten gefüllt (grau). Eigene Texte gehen vor."
+        : "";
+    $("name").textContent = d.file_name || "Dateiname erst nach Eingabe von Nach- und Vorname (Einstellungen, Vorlage)";
+}
+function onExported(name) {
+    $("err").hidden = true;
+    $("name").hidden = false;
+    $("name").textContent = "Exportiert: " + name;
+}
+function onError(msg) {
+    $("err").textContent = msg;
+    $("err").hidden = false;
+    $("name").hidden = true;
+}
+
+$("prev").onclick = () => send({ op: "nav", delta: -1 });
+$("next").onclick = () => send({ op: "nav", delta: 1 });
+$("now").onclick = () => send({ op: "this_week" });
+$("close").onclick = () => send({ op: "close" });
+$("all-ferien").onclick = () => send({ op: "whole", kind: "ferien" });
+$("all-uek").onclick = () => send({ op: "whole", kind: "uek" });
+$("all-plan").onclick = () => send({ op: "whole", kind: "plan" });
+$("export").onclick = () => { saveTexts(); send({ op: "export" }); };
+for (const f of FIELDS) $(f).addEventListener("change", saveTexts);
+$("head").addEventListener("mousedown", (e) => {
+    if (e.button === 0 && !e.target.closest("button")) send({ op: "drag" });
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") send({ op: "close" }); });
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+</script>
+</body>
+</html>

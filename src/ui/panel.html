@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<!--BASE-->
+<style>
+.head { padding: 22px 22px 18px; display: flex; flex-direction: column; gap: 18px; flex: none; }
+.nav { display: flex; align-items: center; gap: 6px; }
+.nav .prev { margin-left: -8px; }
+.nav .title { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.nav .title .t { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.nav .title button.badge { background: none; cursor: pointer; }
+.nav .title button.badge:hover { color: var(--fg); border-color: rgba(255,255,255,.3); }
+.nav .week { background: var(--muted); color: var(--fg); }
+.nav .week:hover { background: #262626; }
+.seg { grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); }
+.seg button[aria-pressed=true] svg { stroke: var(--ad, #555); }
+
+.sumcard { margin: 0 22px; padding: 16px 18px; background: var(--card); border-radius: var(--r-card); display: flex; flex-direction: column; gap: 12px; flex: none; }
+.sumcard .row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; }
+.sumcard .big { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sumcard .of { font-size: 14px; color: var(--mfg); }
+.sumcard .grow { flex: 1; }
+.sumcard .note { font-size: 12px; color: var(--accent); display: inline-flex; align-items: center; gap: 5px; overflow-wrap: anywhere; }
+.sumcard .free { font-size: 14px; color: var(--mfg); line-height: 1.5; }
+.sumcard .rest { align-self: flex-start; }
+
+.list { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 22px 6px; display: flex; flex-direction: column; gap: 8px; }
+.empty { margin: auto; text-align: center; color: var(--mfg); font-size: 13px; }
+.entry-card { display: flex; gap: 14px; align-items: flex-start; background: var(--card); border-radius: var(--r-row); padding: 13px 16px; cursor: text; flex: none; }
+.entry-card .h { flex: none; min-width: 34px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 21px; }
+.entry-card .h.zero { color: var(--mfg); font-weight: 400; }
+.entry-card .txt { flex: 1; min-width: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.entry-card.commit .txt { color: var(--mfg); display: flex; gap: 8px; align-items: flex-start; }
+.entry-card.commit .txt svg { margin-top: 4px; }
+.entry-card .del { opacity: 0; width: 24px; height: 24px; margin: -1px -6px -1px 0; flex: none; }
+.entry-card:hover .del, .entry-card .del:focus-visible, .entry-card .del.armed { opacity: 1; }
+.entry-card .del.armed { width: auto; padding: 0 8px; font-size: 12px; color: var(--over); }
+.entry-card.edit { padding: 6px; }
+.entry-card.edit input { height: 38px; }
+
+.err { padding: 6px 22px 0; flex: none; }
+.addrow { padding: 12px 22px 22px; display: flex; gap: 10px; flex: none; }
+.addrow .text { flex: 1; min-width: 0; }
+.addrow #hours { width: 60px; text-align: right; padding: 0 12px; }
+.addrow .icon-btn { width: 44px; height: 44px; flex: none; }
+</style>
+</head>
+<body>
+<div class="window" id="win">
+    <div class="head">
+        <div class="nav">
+            <button class="icon-btn prev" id="prev" aria-label="Vorheriger Tag"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+            <div class="title" id="title"></div>
+            <button class="icon-btn" id="next" aria-label="Nächster Tag"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="icon-btn week" id="week" aria-label="Wochenansicht" title="Wochenansicht"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></button>
+        </div>
+        <div class="seg" id="seg" role="group" aria-label="Ort"></div>
+    </div>
+
+    <div class="sumcard" id="sum"></div>
+
+    <div class="list" id="list"></div>
+
+    <div class="err err-text" id="err" hidden></div>
+    <div class="addrow">
+        <label class="text"><span class="sr">Tätigkeit</span><input type="text" id="text" placeholder="Was hast du gemacht?" autocomplete="off" spellcheck="false"></label>
+        <label><span class="sr">Dauer in Stunden</span><input type="text" id="hours" placeholder="2.4" inputmode="decimal" autocomplete="off"></label>
+        <button class="icon-btn primary" id="add" aria-label="Eintrag hinzufügen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+    </div>
+</div>
+<script>
+const send = (msg) => window.ipc.postMessage(JSON.stringify(msg));
+const $ = (id) => document.getElementById(id);
+const svg = (size, sw, body, extra) => '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round"' + (extra || "") + '>' + body + '</svg>';
+const ICONS = {
+    arbeit: '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
+    schule: '<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>',
+    uek: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/>',
+    ferien: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    over: '<path d="M12 5v14"/><path d="m5 12 7-7 7 7"/>',
+    commit: '<circle cx="12" cy="12" r="3"/><path d="M3 12h6"/><path d="M15 12h6"/>',
+    trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+};
+const DARK = { arbeit: "var(--noser-d)", schule: "var(--gibb-d)", uek: "var(--uek-d)", ferien: "var(--ferien-d)" };
+let state = null;
+let editing = false;
+
+function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+}
+
+// "Noser Young" ist für vier Segmente zu breit: ab 9 Zeichen mit Leerzeichen zählt das erste Wort, der ganze Name steht im Tooltip
+const shortName = (n) => (n.length > 9 && n.includes(" ") ? n.split(" ")[0] : n);
+
+function renderTitle(d) {
+    const title = $("title");
+    title.replaceChildren(el("span", "t", d.title));
+    if (d.is_today) {
+        title.append(el("span", "badge", "Heute"));
+    } else {
+        const back = el("button", "badge", "Zu heute");
+        back.title = "Zurück zu heute";
+        back.onclick = () => send({ op: "today" });
+        title.append(back);
+    }
+    $("next").disabled = !d.can_next;
+}
+
+function renderSeg(d) {
+    const seg = $("seg");
+    seg.replaceChildren(...d.ort_list.map((o) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("aria-pressed", o.name === d.ort ? "true" : "false");
+        b.title = o.name;
+        b.style.setProperty("--ad", DARK[o.art] || "#555");
+        b.innerHTML = svg(14, 2, ICONS[o.art] || "");
+        b.append(shortName(o.name));
+        b.onclick = () => { if (o.name !== d.ort) send({ op: "set_ort", ort: o.name }); };
+        return b;
+    }));
+}
+
+function renderSum(d) {
+    const sum = $("sum");
+    const root = document.documentElement;
+    root.dataset.art = d.art;
+    const hasSoll = d.art !== "uek" && d.art !== "ferien" && d.ort !== "" && d.soll !== "0.0";
+    root.dataset.level = hasSoll ? d.level : "";
+    if (!hasSoll) {
+        const text = d.ort === ""
+            ? "Kein Arbeitstag. Du kannst oben einen Ort wählen."
+            : "Keine Stunden an diesem Tag. Keine Erinnerungen heute.";
+        sum.replaceChildren(el("div", "free", text));
+        return;
+    }
+    const row = el("div", "row");
+    const note = el("span", "note");
+    if (d.level === "done") note.innerHTML = svg(13, 2.6, ICONS.check);
+    if (d.level === "over") note.innerHTML = svg(13, 2.4, ICONS.over);
+    note.append(d.short_note);
+    row.append(el("span", "big", d.total), el("span", "of", "von " + d.soll + " h"), el("span", "grow"), note);
+    const bar = el("div", "bar");
+    const fill = el("i");
+    fill.style.width = d.percent + "%";
+    bar.append(fill);
+    sum.replaceChildren(row, bar);
+    if (d.can_rest) {
+        const rest = el("button", "btn text rest", "Rest auf letzte Zeile buchen");
+        rest.onclick = () => send({ op: "rest" });
+        sum.append(rest);
+    }
+}
+
+const hoursText = (h) => (h > 0 ? h.toFixed(1) + "h" : "–");
+
+function renderList() {
+    const list = $("list");
+    if (!state.entries.length) {
+        list.replaceChildren(el("div", "empty", state.is_today ? "Noch nichts eingetragen." : "Keine Einträge an diesem Tag."));
+        return;
+    }
+    list.replaceChildren(...state.entries.map(entryRow));
+    list.scrollTop = list.scrollHeight;
+}
+
+function entryRow(e) {
+    const row = el("div", "entry-card" + (e.commit ? " commit" : ""));
+    row.append(el("span", "h" + (e.hours > 0 ? "" : " zero"), hoursText(e.hours)));
+    const txt = el("div", "txt");
+    if (e.commit) {
+        txt.innerHTML = svg(14, 2, ICONS.commit, ' aria-label="Commit"');
+        txt.append(el("span", "wrap", (e.repo ? e.repo + ": " : "") + e.text));
+    } else {
+        txt.textContent = e.text;
+    }
+    row.append(txt);
+    row.title = e.time + " · Klicken zum Bearbeiten";
+    row.onclick = () => startEdit(row, e);
+    if (!e.commit) {
+        const del = el("button", "icon-btn del");
+        del.setAttribute("aria-label", "Eintrag löschen");
+        del.innerHTML = svg(14, 2, ICONS.trash);
+        let timer = 0;
+        const reset = () => { clearTimeout(timer); del.classList.remove("armed"); del.innerHTML = svg(14, 2, ICONS.trash); };
+        del.onclick = (ev) => {
+            ev.stopPropagation();
+            if (del.classList.contains("armed")) {
+                send({ op: "delete", id: e.id });
+                return;
+            }
+            del.classList.add("armed");
+            del.textContent = "Löschen?";
+            timer = setTimeout(reset, 3000);
+        };
+        del.onblur = reset;
+        row.append(del);
+    }
+    return row;
+}
+
+function startEdit(row, e) {
+    if (editing) return;
+    editing = true;
+    row.className = "entry-card edit";
+    row.onclick = null;
+    row.title = "";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = e.edit;
+    input.setAttribute("aria-label", "Text und Dauer, z. B. Bug gefixt 2.4");
+    const done = () => { editing = false; if (state) renderList(); };
+    input.onkeydown = (ev) => {
+        if (ev.key === "Enter") {
+            ev.preventDefault();
+            editing = false;
+            send({ op: "update", id: e.id, text: input.value });
+        } else if (ev.key === "Escape") {
+            ev.stopPropagation();
+            done();
+        }
+    };
+    input.onblur = () => { if (editing) done(); };
+    row.replaceChildren(input);
+    input.focus();
+    input.select();
+}
+
+function render() {
+    const d = state;
+    renderTitle(d);
+    renderSeg(d);
+    renderSum(d);
+    $("err").hidden = true;
+    if (!editing) renderList();
+}
+
+// Rust ruft diese Funktionen auf
+function onDay(d) { state = d; render(); }
+function onAdded() { $("text").value = ""; $("hours").value = ""; }
+function onError(msg) { $("err").textContent = msg; $("err").hidden = false; }
+function focusInput() { $("text").focus(); }
+
+function add() {
+    send({ op: "add", text: $("text").value, hours: $("hours").value });
+}
+
+$("prev").onclick = () => send({ op: "nav", delta: -1 });
+$("next").onclick = () => send({ op: "nav", delta: 1 });
+$("week").onclick = () => send({ op: "week" });
+$("add").onclick = add;
+for (const id of ["text", "hours"]) {
+    $(id).addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); add(); }
+        else if (e.key === "Escape") { send({ op: "hide" }); }
+    });
+}
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+send({ op: "ready" });
+</script>
+</body>
+</html>

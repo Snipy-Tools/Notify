@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<!--BASE-->
+<style>
+.pill {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.ico {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    color: var(--accent);
+    background: var(--muted);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; cursor: grab; }
+.mid.solo { gap: 3px; }
+.l1 { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.l1 .d { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.l1 .o { font-size: 12px; color: var(--mfg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.l1 .o.status { color: var(--accent); flex: none; }
+.l2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.l2 .bar { width: 96px; flex: none; }
+.l2 .num { font-size: 12px; color: var(--mfg); white-space: nowrap; }
+.l2.note { font-size: 12px; color: var(--mfg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+<div class="pill" id="pill">
+    <div class="ico" id="ico"></div>
+    <div class="mid" id="mid">
+        <div class="l1"><span class="d" id="date"></span><span class="o" id="ort"></span></div>
+        <div id="l2"></div>
+    </div>
+    <button class="icon-btn round fill" id="gear" aria-label="Einstellungen" title="Einstellungen" hidden>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+    <button class="icon-btn round primary" id="toggle" aria-label="Ausklappen" style="border-radius:50%"></button>
+</div>
+<script>
+const send = (msg) => window.ipc.postMessage(JSON.stringify(msg));
+const $ = (id) => document.getElementById(id);
+const svg = (size, sw, body) => '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
+const ICONS = {
+    arbeit: '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
+    schule: '<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>',
+    uek: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/>',
+    ferien: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+    frei: '<circle cx="12" cy="12" r="10"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    over: '<path d="M12 5v14"/><path d="m5 12 7-7 7 7"/>',
+};
+const CHEVRON = { down: '<path d="m6 9 6 6 6-6"/>', up: '<path d="m18 15-6-6-6 6"/>' };
+let state = null;
+
+function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+}
+
+function render() {
+    const d = state;
+    const root = document.documentElement;
+    root.dataset.art = d.art;
+    root.dataset.level = d.no_hours ? "" : d.level;
+
+    const done = !d.no_hours && d.level === "done";
+    const over = !d.no_hours && d.level === "over";
+    $("ico").innerHTML = svg(18, done ? 2.6 : 2, done ? ICONS.check : over ? ICONS.over : ICONS[d.art || "frei"]);
+    $("date").textContent = d.short;
+
+    const ort = $("ort");
+    ort.className = "o";
+    ort.removeAttribute("title");
+    if (done || over) {
+        ort.className = "o status";
+        ort.textContent = d.short_note;
+    } else {
+        ort.textContent = d.ort || "Frei";
+        ort.title = d.ort || "Frei";
+    }
+
+    const l2 = $("l2");
+    $("mid").classList.toggle("solo", d.no_hours);
+    if (d.no_hours) {
+        l2.className = "l2 note";
+        l2.textContent = "Keine Erinnerungen heute";
+    } else {
+        l2.className = "l2";
+        const bar = el("div", "bar thin");
+        const fill = el("i");
+        fill.style.width = d.percent + "%";
+        bar.append(fill);
+        l2.replaceChildren(bar, el("span", "num", d.main));
+    }
+
+    // Pfeil: ausgeklappt zeigt er vom Panel weg (einklappen), eingeklappt dorthin, wo das Panel aufklappt
+    const up = d.expanded ? d.dir === "down" : d.dir === "up";
+    $("toggle").innerHTML = svg(16, 2.4, up ? CHEVRON.up : CHEVRON.down);
+    const label = d.expanded ? "Einklappen" : "Ausklappen";
+    $("toggle").setAttribute("aria-label", label);
+    $("toggle").title = label;
+
+    $("gear").hidden = !d.expanded;
+    $("gear").style.background = d.settings_open ? "#2a2a2a" : "";
+}
+
+// Rust ruft diese Funktion auf
+function onPill(d) { state = d; render(); }
+
+$("toggle").onclick = () => send({ op: "collapse", collapsed: state ? state.expanded : false });
+$("gear").onclick = () => send({ op: "settings" });
+$("pill").addEventListener("mousedown", (e) => {
+    if (e.button === 0 && !e.target.closest("button")) send({ op: "drag" });
+});
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+send({ op: "ready" });
+</script>
+</body>
+</html>

@@ -1,6 +1,4 @@
-use std::collections::hash_map::RandomState;
 use std::fs;
-use std::hash::{BuildHasher, Hasher};
 use std::path::PathBuf;
 
 pub fn dir() -> PathBuf {
@@ -22,28 +20,60 @@ pub fn data_dir() -> PathBuf {
     dir
 }
 
-fn random() -> u64 {
-    RandomState::new().build_hasher().finish()
+/// Position und Zustand der Leiste
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BarState {
+    pub pos: Option<(i32, i32)>,
+    pub collapsed: bool,
 }
 
-pub fn token() -> String {
-    let path = dir().join("token");
-    if let Ok(saved) = fs::read_to_string(&path)
-        && saved.trim().len() == 32
-    {
-        return saved.trim().to_string();
+/// Format der Datei `bar`: `x,y,c` mit `c` = 1 (eingeklappt) oder 0
+fn parse_bar(text: &str) -> Option<BarState> {
+    let mut parts = text.trim().split(',');
+    let x = parts.next()?.trim().parse().ok()?;
+    let y = parts.next()?.trim().parse().ok()?;
+    let collapsed = match parts.next().map(str::trim) {
+        Some("1") => true,
+        Some("0") | None => false,
+        Some(_) => return None,
+    };
+    if parts.next().is_some() {
+        return None;
     }
-    let token = format!("{:016x}{:016x}", random(), random());
-    fs::write(&path, &token).ok();
-    token
+    Some(BarState { pos: Some((x, y)), collapsed })
 }
 
-pub fn load_pos() -> Option<(i32, i32)> {
-    let saved = fs::read_to_string(dir().join("pos")).ok()?;
-    let (x, y) = saved.trim().split_once(',')?;
-    Some((x.parse().ok()?, y.parse().ok()?))
+fn format_bar(x: i32, y: i32, collapsed: bool) -> String {
+    format!("{x},{y},{}", u8::from(collapsed))
 }
 
-pub fn save_pos(x: i32, y: i32) {
-    fs::write(dir().join("pos"), format!("{x},{y}")).ok();
+pub fn load_bar() -> BarState {
+    fs::read_to_string(dir().join("bar")).ok().and_then(|t| parse_bar(&t)).unwrap_or_default()
+}
+
+pub fn save_bar(x: i32, y: i32, collapsed: bool) {
+    fs::write(dir().join("bar"), format_bar(x, y, collapsed)).ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bar_state_roundtrip() {
+        let text = format_bar(-120, 40, true);
+        assert_eq!(text, "-120,40,1");
+        assert_eq!(parse_bar(&text), Some(BarState { pos: Some((-120, 40)), collapsed: true }));
+        assert_eq!(parse_bar("5,6,0\n"), Some(BarState { pos: Some((5, 6)), collapsed: false }));
+        // alte Datei ohne Zustand
+        assert_eq!(parse_bar("5,6"), Some(BarState { pos: Some((5, 6)), collapsed: false }));
+    }
+
+    #[test]
+    fn bad_bar_state_is_rejected() {
+        for bad in ["", "x,y", "1", "1,2,3", "1,2,0,9", "1.5,2,0"] {
+            assert_eq!(parse_bar(bad), None, "{bad}");
+        }
+        assert_eq!(BarState::default(), BarState { pos: None, collapsed: false });
+    }
 }
