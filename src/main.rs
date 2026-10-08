@@ -7,6 +7,7 @@ mod git;
 mod hotkey;
 mod journal;
 mod layout;
+mod limits;
 mod log;
 mod recap;
 mod reminder;

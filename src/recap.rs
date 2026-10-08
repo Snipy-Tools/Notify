@@ -4,6 +4,7 @@ use crate::git::{self, Commit, GitConfig};
 use crate::hotkey::Hotkey;
 use crate::journal::{Entry, Journal, Quelle, Update, WeekTexts, iso_week, split_duration, week_bounds};
 use crate::layout;
+use crate::limits::{self, LimitsWatcher};
 use crate::log;
 use crate::reminder::{self, Gate, ReminderWindow};
 use crate::settings::{DayKind, Settings, SettingsInput, check_git_folders};
@@ -12,8 +13,8 @@ use crate::timer::{Schedule, Timer, checkins_allowed, reflection_wanted};
 use crate::tray::UserEvent;
 use crate::view;
 use crate::windows::{
-    BarMsg, PickKind, Popup, ReminderMsg, SettingsMsg, WeekMsg, WholeWeek, js_string, parse_settings_msg,
-    parse_week_msg,
+    BarMsg, LimitsMsg, PickKind, Popup, ReminderMsg, SettingsMsg, WeekMsg, WholeWeek, js_string, parse_limits_msg,
+    parse_settings_msg, parse_week_msg,
 };
 use chrono::{Days, Local, NaiveDate, Utc};
 use std::time::{Duration, Instant};
@@ -33,10 +34,13 @@ const REOPEN_GUARD: Duration = Duration::from_millis(600);
 /// So oft schaut die App auf den Fokus des offenen Popovers
 const POPOVER_POLL: Duration = Duration::from_millis(250);
 const DIALOG_GRACE: Duration = Duration::from_millis(700);
+/// So oft schaut die App nach `claude-limits.json` (und frischt die offene Karte auf)
+const LIMITS_POLL: Duration = Duration::from_secs(5);
 
 const SETTINGS_SIZE: (f64, f64) = (760.0, 620.0);
 const SETTINGS_SIZE_TALL: (f64, f64) = (760.0, 700.0);
 const WEEK_SIZE: (f64, f64) = (760.0, 700.0);
+const LIMITS_SIZE: (f64, f64) = (340.0, 320.0);
 
 /// Zustand des Einstellungs-Popovers: wann es sich bei Fokusverlust schliessen darf
 #[derive(Debug, Default)]
@@ -213,6 +217,12 @@ pub struct Recap {
     week_date: NaiveDate,
     settings_win: Popup,
     popover: PopoverGuard,
+    /// Detailkarte der Claude-Limits: ein Popover wie die Einstellungen
+    limits_win: Popup,
+    limits_guard: PopoverGuard,
+    limits: LimitsWatcher,
+    limits_view: Option<limits::View>,
+    next_limits: Instant,
     reminder: ReminderWindow,
     gate: Gate,
     /// Der sichtbare Hinweis ist die Wochenreflexion
@@ -268,6 +278,19 @@ impl Recap {
                 }
             },
         )?;
+        let limits_proxy = proxy.clone();
+        let limits_win = Popup::new(
+            target,
+            "Notify – Claude-Limits",
+            include_str!("./ui/limits.html"),
+            LIMITS_SIZE,
+            20.0,
+            move |body| {
+                if let Some(msg) = parse_limits_msg(&body) {
+                    limits_proxy.send_event(UserEvent::Limits(msg)).ok();
+                }
+            },
+        )?;
         let schedule = settings.schedule().unwrap_or_else(|e| {
             log::error(&format!("Einstellungen ungültig, Standardwerte aktiv: {e}"));
             Settings::default().schedule().expect("default settings are valid")
@@ -294,6 +317,11 @@ impl Recap {
             week_date: today,
             settings_win,
             popover: PopoverGuard::new(),
+            limits_win,
+            limits_guard: PopoverGuard::new(),
+            limits: LimitsWatcher::new(limits::path()),
+            limits_view: None,
+            next_limits: Instant::now(),
             reminder,
             gate: Gate::default(),
             hint_reflection: false,
@@ -324,8 +352,19 @@ impl Recap {
         if self.git.is_some() {
             deadline = deadline.min(self.next_git);
         }
-        let poll = self.settings_win.is_visible().then(|| Instant::now() + POPOVER_POLL);
-        let pending = [self.prompt.deadline(), self.bar.deadline(), self.popover.deadline(), poll].into_iter().flatten();
+        let poll = (self.settings_win.is_visible() || self.limits_win.is_visible())
+            .then(|| Instant::now() + POPOVER_POLL);
+        let limits = self.settings.claude_limits.then_some(self.next_limits);
+        let pending = [
+            self.prompt.deadline(),
+            self.bar.deadline(),
+            self.popover.deadline(),
+            self.limits_guard.deadline(),
+            poll,
+            limits,
+        ]
+        .into_iter()
+        .flatten();
         Some(pending.fold(deadline, Instant::min))
     }
 
@@ -339,12 +378,17 @@ impl Recap {
             self.start_scan();
         }
         self.prompt.tick(now);
+        if self.settings.claude_limits && now >= self.next_limits {
+            self.next_limits = now + LIMITS_POLL;
+            self.poll_limits();
+        }
         if self.bar.tick() {
             // die Pille ist eingerastet: Pfeilrichtung neu bestimmen, Popover neu verankern
             self.refresh_pill();
-            self.anchor_settings();
+            self.anchor_popovers();
         }
         self.check_settings_blur(now);
+        self.check_limits_blur(now);
     }
 
     /// Sucht in einem eigenen Thread nach neuen Commits. Das Ergebnis kommt als Event `Commits`.
@@ -530,7 +574,7 @@ impl Recap {
         self.bar.show_focused();
         self.refresh_bar();
         self.bar.focus_panel_input();
-        self.anchor_settings();
+        self.anchor_popovers();
         self.start_scan();
     }
 
@@ -547,6 +591,7 @@ impl Recap {
     /// Blendet die Leiste aus (Esc, Hotkey); das Einstellungs-Popover geht mit
     fn hide_bar(&mut self) {
         self.close_settings();
+        self.close_limits();
         self.bar.hide();
     }
 
@@ -554,6 +599,7 @@ impl Recap {
         self.bar.handle_event(id, event);
         self.week.handle_event(id, event);
         self.settings_win.handle_event(id, event);
+        self.limits_win.handle_event(id, event);
         self.reminder.handle_event(id, event);
         if id == self.settings_win.id() {
             match event {
@@ -561,6 +607,15 @@ impl Recap {
                     self.popover.focus_lost(Instant::now());
                 }
                 WindowEvent::Focused(true) => self.popover.focus_gained(),
+                _ => {}
+            }
+        }
+        if id == self.limits_win.id() {
+            match event {
+                WindowEvent::Focused(false) if self.limits_win.is_visible() => {
+                    self.limits_guard.focus_lost(Instant::now());
+                }
+                WindowEvent::Focused(true) => self.limits_guard.focus_gained(),
                 _ => {}
             }
         }
@@ -573,6 +628,8 @@ impl Recap {
             self.week.hide();
         } else if id == self.settings_win.id() {
             self.close_settings();
+        } else if id == self.limits_win.id() {
+            self.close_limits();
         } else if id == self.reminder.id() {
             self.reminder.hide();
         }
@@ -594,6 +651,8 @@ impl Recap {
         data["expanded"] = serde_json::json!(!self.bar.is_collapsed());
         data["dir"] = serde_json::json!(if self.bar.direction() == layout::Dir::Down { "down" } else { "up" });
         data["settings_open"] = serde_json::json!(self.settings_win.is_visible());
+        limits::add_to_pill_data(&mut data, &self.limits_view, &self.settings.ring_colors());
+        data["limits_open"] = serde_json::json!(self.limits_win.is_visible());
         data
     }
 
@@ -634,11 +693,15 @@ impl Recap {
             BarMsg::Rest => self.book_rest(),
             BarMsg::Collapse { collapsed } => {
                 self.bar.set_collapsed(collapsed);
-                self.anchor_settings();
+                self.anchor_popovers();
                 Ok(())
             }
             BarMsg::Settings => {
                 self.toggle_settings();
+                return;
+            }
+            BarMsg::Limits => {
+                self.toggle_limits();
                 return;
             }
             BarMsg::Week => {
@@ -869,6 +932,7 @@ impl Recap {
             self.bar.show_quietly();
             self.refresh_bar();
         }
+        self.close_limits();
         self.popover.reset();
         let (year, kw) = iso_week(Local::now().date_naive());
         let data = serde_json::json!({
@@ -892,9 +956,12 @@ impl Recap {
     }
 
     /// Setzt das Popover neben die Leiste: ganz auf den Monitor, ohne Pille oder Panel zu verdecken
-    fn anchor_settings(&self) {
+    fn anchor_popovers(&self) {
         if self.settings_win.is_visible() {
             self.place_settings();
+        }
+        if self.limits_win.is_visible() {
+            self.place_limits();
         }
     }
 
@@ -927,6 +994,95 @@ impl Recap {
             Some(BlurAction::Close) => self.close_settings(),
             Some(BlurAction::ShowError) => self.settings_win.script("showInvalid()"),
             Some(BlurAction::Keep) | None => {}
+        }
+    }
+
+    // --- Claude-Limits ---
+
+    /// Schaut nach der Datei und bringt Pille und offene Karte auf den Stand
+    fn poll_limits(&mut self) {
+        self.limits.poll();
+        let now = Utc::now().timestamp();
+        let view = self.limits.current().and_then(|l| l.view(now, &limits::local_offset, self.settings.ring_thresholds()));
+        if view != self.limits_view {
+            self.limits_view = view;
+            self.refresh_pill();
+        }
+        if self.limits_win.is_visible() {
+            self.push_limits_card(now);
+        }
+    }
+
+    fn push_limits_card(&self, now: i64) {
+        let data = limits::card_data(&self.limits_view, &self.settings.ring_colors(), now);
+        self.limits_win.script(&format!("onLimits({data})"));
+    }
+
+    /// Schalter in den Einstellungen: aus = Ort-Icon, Karte zu, kein Polling; an = sofort lesen
+    fn apply_limits_switch(&mut self) {
+        if self.settings.claude_limits {
+            self.limits = LimitsWatcher::new(limits::path());
+            self.next_limits = Instant::now();
+        } else {
+            self.limits_view = None;
+            self.close_limits();
+        }
+    }
+
+    /// Klick auf den Ring: öffnet die Karte oder schliesst sie wieder
+    fn toggle_limits(&mut self) {
+        if self.limits_win.is_visible() {
+            self.close_limits();
+        } else if self.limits_guard.may_open(Instant::now()) && self.limits_view.is_some() {
+            self.show_limits();
+        }
+    }
+
+    fn show_limits(&mut self) {
+        if !self.bar.is_visible() {
+            self.bar.show_quietly();
+        }
+        self.close_settings();
+        self.limits_guard.reset();
+        self.poll_limits();
+        self.push_limits_card(Utc::now().timestamp());
+        self.limits_win.set_size(LIMITS_SIZE);
+        self.place_limits();
+        self.limits_win.show(true);
+        self.refresh_pill();
+    }
+
+    fn close_limits(&mut self) {
+        if self.limits_win.is_visible() {
+            self.limits_win.hide();
+            self.refresh_pill();
+        }
+        self.limits_guard.focus_gained();
+    }
+
+    fn place_limits(&self) {
+        let Some(bar) = self.bar.group_rect() else { return };
+        let Some(work) = self.bar.work_area() else { return };
+        let pos = layout::anchor_popover(bar, self.limits_win.size_px(), work, self.gap_px());
+        self.limits_win.move_to(pos.0, pos.1);
+    }
+
+    /// Fokus ist weg (Klick ausserhalb): schliesst die Karte
+    fn check_limits_blur(&mut self, now: Instant) {
+        if !self.limits_win.is_visible() {
+            self.limits_guard.focus_gained();
+            return;
+        }
+        let foreground = self.limits_win.is_foreground();
+        self.limits_guard.observe(now, foreground);
+        if self.limits_guard.check(now, foreground) == Some(BlurAction::Close) {
+            self.close_limits();
+        }
+    }
+
+    pub fn handle_limits(&mut self, msg: LimitsMsg) {
+        match msg {
+            LimitsMsg::Close => self.close_limits(),
         }
     }
 
@@ -969,7 +1125,7 @@ impl Recap {
             SettingsMsg::Tall { tall } => {
                 if self.popover.set_tall(tall) {
                     self.settings_win.set_size(self.popover.size());
-                    self.anchor_settings();
+                    self.anchor_popovers();
                 }
             }
             SettingsMsg::Pick { field, kind } => self.pick(field, kind),
@@ -997,6 +1153,17 @@ impl Recap {
         let git = settings.git()?;
         check_git_folders(&git)?;
         settings.save()?;
+        for (name, color) in [
+            ("5 Stunden", &settings.ring_five_hour),
+            ("Woche", &settings.ring_seven_day),
+            ("Kontext", &settings.ring_context),
+            ("Warnung", &settings.ring_warn),
+            ("Kritisch", &settings.ring_crit),
+        ] {
+            if limits::hardly_visible(color) {
+                log::info(&format!("Ringfarbe {name} ({color}) ist gegen die Spur kaum sichtbar"));
+            }
+        }
 
         self.timer = Timer::new(schedule.clone(), Local::now().naive_local());
         self.schedule = schedule;
@@ -1012,7 +1179,21 @@ impl Recap {
         self.journal = Journal::from_settings(&settings);
         self.marker = None;
         self.bar.set_pref(settings.aufklappen);
+        let limits_toggled = settings.claude_limits != self.settings.claude_limits;
+        let thresholds_changed = settings.ring_thresholds() != self.settings.ring_thresholds();
         self.settings = settings;
+        if thresholds_changed {
+            // Die Warnstufen stecken in der Ansicht, also neu berechnen
+            self.limits_view = None;
+            self.poll_limits();
+        }
+        if limits_toggled {
+            self.apply_limits_switch();
+        }
+        // Pille (in refresh_all) und eine offene Karte bekommen die Farben sofort
+        if self.limits_win.is_visible() {
+            self.push_limits_card(Utc::now().timestamp());
+        }
         self.refresh_all();
 
         system::set_autostart(autostart).map_err(|e| {

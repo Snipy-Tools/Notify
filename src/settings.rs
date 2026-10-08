@@ -1,6 +1,7 @@
 use crate::export::{ExportConfig, MAX_HOURS_PER_DAY};
 use crate::git::GitConfig;
 use crate::hotkey;
+use crate::limits::{self, RingColors, Thresholds};
 use crate::log;
 use crate::store;
 use crate::timer::Schedule;
@@ -247,6 +248,17 @@ pub struct Settings {
     pub aufklappen: Aufklappen,
     /// Nach "In ... min" im Hinweis erinnert die App nach so vielen Minuten nochmal
     pub snooze_minutes: u32,
+    /// Claude-Limits als Ringe in der Pille zeigen (aus: immer das Ort-Icon, die Datei wird nicht gelesen)
+    pub claude_limits: bool,
+    /// Ringfarben der Claude-Limits, "#rrggbb": aussen 5 Stunden, Mitte Woche, innen Kontext, Warnstufe ab 80 %, kritisch ab 95 %
+    pub ring_five_hour: String,
+    pub ring_seven_day: String,
+    pub ring_context: String,
+    pub ring_warn: String,
+    pub ring_crit: String,
+    /// Ab wie viel Prozent ein Ring die Warnfarbe bzw. die kritische Farbe bekommt (1 <= warn < crit <= 100)
+    pub ring_warn_at: u32,
+    pub ring_crit_at: u32,
 }
 
 fn plan_tag(tag: Weekday, ort: &str) -> PlanTag {
@@ -288,6 +300,14 @@ impl Default for Settings {
             commit_erinnerung: true,
             aufklappen: Aufklappen::Auto,
             snooze_minutes: 15,
+            claude_limits: true,
+            ring_five_hour: limits::DEFAULT_FIVE_HOUR.into(),
+            ring_seven_day: limits::DEFAULT_SEVEN_DAY.into(),
+            ring_context: limits::DEFAULT_CONTEXT.into(),
+            ring_warn: limits::DEFAULT_WARN.into(),
+            ring_crit: limits::DEFAULT_CRIT.into(),
+            ring_warn_at: limits::DEFAULT_WARN_AT,
+            ring_crit_at: limits::DEFAULT_CRIT_AT,
         }
     }
 }
@@ -368,6 +388,16 @@ impl Settings {
             ferien: self.ferien_texte.clone(),
             uek: self.uek_texte.clone(),
         })
+    }
+
+    /// Die Ringfarben für Pille und Karte (eine unlesbare Farbe aus einer von Hand bearbeiteten Datei wird zum Standard)
+    pub fn ring_colors(&self) -> RingColors {
+        RingColors::resolve(&self.ring_five_hour, &self.ring_seven_day, &self.ring_context, &self.ring_warn, &self.ring_crit)
+    }
+
+    /// Die Schwellen für Warn- und kritische Farbe (ungültige Werte aus einer von Hand bearbeiteten Datei werden zum Standard)
+    pub fn ring_thresholds(&self) -> Thresholds {
+        Thresholds::resolve(self.ring_warn_at, self.ring_crit_at)
     }
 
     /// Das Tastenkürzel, geprüft
@@ -496,12 +526,38 @@ pub struct SettingsInput {
     pub aufklappen: Option<String>,
     #[serde(default)]
     pub snooze_minutes: Option<String>,
+    #[serde(default)]
+    pub claude_limits: Option<bool>,
+    /// Ringfarben als "#RRGGBB" (auch "#RGB" oder ohne "#")
+    #[serde(default)]
+    pub ring_five_hour: Option<String>,
+    #[serde(default)]
+    pub ring_seven_day: Option<String>,
+    #[serde(default)]
+    pub ring_context: Option<String>,
+    #[serde(default)]
+    pub ring_warn: Option<String>,
+    #[serde(default)]
+    pub ring_crit: Option<String>,
+    /// Schwellen in Prozent als Text (wie die anderen Zahlenfelder)
+    #[serde(default)]
+    pub ring_warn_at: Option<String>,
+    #[serde(default)]
+    pub ring_crit_at: Option<String>,
 }
 
 fn parse_whole(label: &str, text: &str) -> Result<u32, String> {
     text.trim()
         .parse::<u32>()
         .map_err(|_| format!("{label} muss eine ganze Zahl sein (z. B. 60)"))
+}
+
+/// Neue Ringfarbe prüfen und normalisieren; fehlt sie, bleibt die bisherige
+fn ring_color(label: &str, input: Option<String>, base: &str) -> Result<String, String> {
+    match input {
+        Some(text) => limits::check_color(label, &text),
+        None => Ok(base.to_string()),
+    }
 }
 
 impl SettingsInput {
@@ -535,7 +591,22 @@ impl SettingsInput {
                 Some(text) => parse_whole("\"Später erinnern\"", text)?,
                 None => base.snooze_minutes,
             },
+            claude_limits: self.claude_limits.unwrap_or(base.claude_limits),
+            ring_five_hour: ring_color("5 Stunden", self.ring_five_hour, &base.ring_five_hour)?,
+            ring_seven_day: ring_color("Woche", self.ring_seven_day, &base.ring_seven_day)?,
+            ring_context: ring_color("Kontext", self.ring_context, &base.ring_context)?,
+            ring_warn: ring_color("Warnung", self.ring_warn, &base.ring_warn)?,
+            ring_crit: ring_color("Kritisch", self.ring_crit, &base.ring_crit)?,
+            ring_warn_at: match &self.ring_warn_at {
+                Some(text) => parse_whole("Die Warnschwelle", text)?,
+                None => base.ring_warn_at,
+            },
+            ring_crit_at: match &self.ring_crit_at {
+                Some(text) => parse_whole("Die kritische Schwelle", text)?,
+                None => base.ring_crit_at,
+            },
         };
+        Thresholds::check(settings.ring_warn_at, settings.ring_crit_at)?;
         settings.schedule()?;
         settings.git()?;
         settings.export()?;
@@ -591,6 +662,119 @@ mod tests {
         assert_eq!(partial.work_blocks, Settings::default().work_blocks);
         assert!(serde_json::from_str::<Settings>(r#"{"wochenplan": []}"#).is_ok());
         assert!(serde_json::from_str::<Settings>("kein json").is_err());
+    }
+
+    #[test]
+    fn claude_limits_switch_defaults_on_and_is_kept() {
+        assert!(Settings::default().claude_limits);
+        // alte Datei ohne das Feld: an
+        let old: Settings = serde_json::from_str(r#"{"interval_minutes":45}"#).unwrap();
+        assert!(old.claude_limits);
+        let off: Settings = serde_json::from_str(r#"{"claude_limits":false}"#).unwrap();
+        assert!(!off.claude_limits);
+        // die Eingabe ändert den Wert, fehlt sie, bleibt er
+        let base = Settings { claude_limits: false, ..Settings::default() };
+        let (s, _) = input().into_settings(&base).unwrap();
+        assert!(!s.claude_limits);
+        let mut i = input();
+        i.claude_limits = Some(true);
+        assert!(i.into_settings(&base).unwrap().0.claude_limits);
+        // Roundtrip über die Datei-Darstellung
+        let text = serde_json::to_string(&Settings { claude_limits: false, ..Settings::default() }).unwrap();
+        assert!(!serde_json::from_str::<Settings>(&text).unwrap().claude_limits);
+    }
+
+    #[test]
+    fn ring_colors_have_defaults_and_old_files_still_load() {
+        let d = Settings::default();
+        assert_eq!(
+            (d.ring_five_hour.as_str(), d.ring_seven_day.as_str(), d.ring_context.as_str()),
+            ("#ededed", "#8a8a8a", "#5c5c5c")
+        );
+        assert_eq!((d.ring_warn.as_str(), d.ring_crit.as_str()), ("#d6b878", "#d28f8f"));
+        assert_eq!(d.ring_colors(), RingColors::default());
+        // alte Datei ohne die Felder (auch mit claude_limits, aber ohne Farben)
+        for old in [r#"{"interval_minutes":45}"#, r#"{"claude_limits":false,"hotkey":"Ctrl+Alt+K"}"#] {
+            let s: Settings = serde_json::from_str(old).unwrap();
+            assert_eq!(s.ring_colors(), RingColors::default(), "{old}");
+        }
+        // Roundtrip mit eigenen Farben
+        let custom = Settings { ring_five_hour: "#8aa8cc".into(), ring_crit: "#ff0000".into(), ..Settings::default() };
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&custom).unwrap()).unwrap();
+        assert_eq!(back, custom);
+        // von Hand kaputt gemacht: die Fenster bekommen trotzdem gültige Farben
+        let broken: Settings = serde_json::from_str(r#"{"ring_context":"blau","ring_warn":"D6B"}"#).unwrap();
+        let c = broken.ring_colors();
+        assert_eq!((c.context.as_str(), c.warn.as_str()), ("#5c5c5c", "#dd66bb"));
+    }
+
+    #[test]
+    fn ring_thresholds_default_validate_and_survive_hand_edits() {
+        let d = Settings::default();
+        assert_eq!((d.ring_warn_at, d.ring_crit_at), (80, 95));
+        assert_eq!(d.ring_thresholds(), Thresholds::default());
+        // alte Datei ohne die Felder
+        let old: Settings = serde_json::from_str(r#"{"interval_minutes":45}"#).unwrap();
+        assert_eq!(old.ring_thresholds(), Thresholds::default());
+        // von Hand kaputt gemacht: Standard statt Absturz
+        let broken: Settings = serde_json::from_str(r#"{"ring_warn_at":99,"ring_crit_at":50}"#).unwrap();
+        assert_eq!(broken.ring_thresholds(), Thresholds::default());
+        // Eingabe: gültig, fehlend, ungültig
+        let base = Settings { ring_warn_at: 70, ring_crit_at: 90, ..Settings::default() };
+        let (s, _) = input().into_settings(&base).unwrap();
+        assert_eq!((s.ring_warn_at, s.ring_crit_at), (70, 90));
+        let mut i = input();
+        i.ring_warn_at = Some(" 60 ".into());
+        i.ring_crit_at = Some("100".into());
+        let (s, _) = i.into_settings(&base).unwrap();
+        assert_eq!((s.ring_warn_at, s.ring_crit_at), (60, 100));
+        let err = |f: &dyn Fn(&mut SettingsInput)| {
+            let mut i = input();
+            f(&mut i);
+            i.into_settings(&base).unwrap_err()
+        };
+        assert!(err(&|i| i.ring_warn_at = Some("viel".into())).contains("Warnschwelle"));
+        assert!(err(&|i| i.ring_crit_at = Some("".into())).contains("kritische Schwelle"));
+        assert!(err(&|i| i.ring_warn_at = Some("0".into())).contains("1 und 100"));
+        assert!(err(&|i| i.ring_crit_at = Some("101".into())).contains("1 und 100"));
+        assert!(err(&|i| { i.ring_warn_at = Some("90".into()); i.ring_crit_at = Some("90".into()); }).contains("unter"));
+        assert!(err(&|i| i.ring_warn_at = Some("95".into())).contains("unter"), "gegen den bisherigen Wert 90");
+    }
+
+    #[test]
+    fn ring_colors_from_input_are_validated_and_normalized() {
+        let base = Settings { ring_context: "#123456".into(), ..Settings::default() };
+        // nicht gelieferte Farben bleiben
+        let (s, _) = input().into_settings(&base).unwrap();
+        assert_eq!(s.ring_context, "#123456");
+        assert_eq!(s.ring_five_hour, "#ededed");
+        // #RGB, Gross-/Kleinschreibung, ohne # und Leerraum werden zu #rrggbb
+        let mut i = input();
+        i.ring_five_hour = Some("#ABC".into());
+        i.ring_seven_day = Some(" 8AA8CC ".into());
+        i.ring_context = Some("#A99BC7".into());
+        i.ring_warn = Some("fa0".into());
+        i.ring_crit = Some("#D28F8F".into());
+        let (s, _) = i.into_settings(&base).unwrap();
+        assert_eq!(
+            [&s.ring_five_hour, &s.ring_seven_day, &s.ring_context, &s.ring_warn, &s.ring_crit],
+            ["#aabbcc", "#8aa8cc", "#a99bc7", "#ffaa00", "#d28f8f"]
+        );
+        // Müll ist ein Fehler, der die Farbe nennt, und nichts wird gespeichert
+        let err = |f: &dyn Fn(&mut SettingsInput)| {
+            let mut i = input();
+            f(&mut i);
+            i.into_settings(&base).unwrap_err()
+        };
+        assert!(err(&|i| i.ring_five_hour = Some("rot".into())).contains("5 Stunden"));
+        assert!(err(&|i| i.ring_seven_day = Some("#12345".into())).contains("Woche"));
+        assert!(err(&|i| i.ring_context = Some("".into())).contains("Kontext"));
+        assert!(err(&|i| i.ring_warn = Some("#gggggg".into())).contains("Warnung"));
+        assert!(err(&|i| i.ring_crit = Some("#fffffff".into())).contains("Kritisch"));
+        // eine dunkle Farbe wird trotzdem gespeichert
+        let mut i = input();
+        i.ring_context = Some("#1c1c1c".into());
+        assert_eq!(i.into_settings(&base).unwrap().0.ring_context, "#1c1c1c");
     }
 
     #[test]
@@ -769,6 +953,14 @@ mod tests {
             commit_erinnerung: None,
             aufklappen: None,
             snooze_minutes: None,
+            claude_limits: None,
+            ring_five_hour: None,
+            ring_seven_day: None,
+            ring_context: None,
+            ring_warn: None,
+            ring_crit: None,
+            ring_warn_at: None,
+            ring_crit_at: None,
         }
     }
 

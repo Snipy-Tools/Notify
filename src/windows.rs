@@ -59,6 +59,8 @@ pub enum BarMsg {
     Collapse { collapsed: bool },
     /// Pille: Zahnrad (öffnet oder schliesst die Einstellungen)
     Settings,
+    /// Pille: Claude-Limits-Ring (öffnet oder schliesst die Detailkarte)
+    Limits,
     Week,
     Hide,
     Drag,
@@ -112,6 +114,13 @@ pub enum SettingsMsg {
     Close,
 }
 
+/// Nachrichten der Detailkarte der Claude-Limits
+#[derive(Debug, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum LimitsMsg {
+    Close,
+}
+
 /// Nachrichten des Hinweisfensters
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -130,6 +139,10 @@ pub fn parse_week_msg(body: &str) -> Option<WeekMsg> {
 }
 
 pub fn parse_settings_msg(body: &str) -> Option<SettingsMsg> {
+    serde_json::from_str(body).ok()
+}
+
+pub fn parse_limits_msg(body: &str) -> Option<LimitsMsg> {
     serde_json::from_str(body).ok()
 }
 
@@ -317,6 +330,7 @@ mod tests {
         assert!(matches!(parse_bar_msg(r#"{"op":"collapse","collapsed":true}"#), Some(BarMsg::Collapse { collapsed: true })));
         assert!(matches!(parse_bar_msg(r#"{"op":"collapse","collapsed":false}"#), Some(BarMsg::Collapse { collapsed: false })));
         assert!(matches!(parse_bar_msg(r#"{"op":"settings"}"#), Some(BarMsg::Settings)));
+        assert!(matches!(parse_bar_msg(r#"{"op":"limits"}"#), Some(BarMsg::Limits)));
         assert!(matches!(parse_bar_msg(r#"{"op":"week"}"#), Some(BarMsg::Week)));
         assert!(matches!(parse_bar_msg(r#"{"op":"hide"}"#), Some(BarMsg::Hide)));
         assert!(matches!(parse_bar_msg(r#"{"op":"drag"}"#), Some(BarMsg::Drag)));
@@ -363,14 +377,18 @@ mod tests {
             parse_settings_msg(save),
             Some(SettingsMsg::Save(i)) if i.work_blocks.len() == 1 && i.autostart && i.git_folders == ["C:\\Work"]
                 && i.nachname.is_none() && i.wochenplan.is_none() && i.hotkey.is_none()
-                && i.aufklappen.is_none() && i.snooze_minutes.is_none()
+                && i.aufklappen.is_none() && i.snooze_minutes.is_none() && i.claude_limits.is_none()
+                && i.ring_five_hour.is_none() && i.ring_seven_day.is_none() && i.ring_context.is_none()
+                && i.ring_warn.is_none() && i.ring_crit.is_none() && i.ring_warn_at.is_none() && i.ring_crit_at.is_none()
         ));
-        let v2 = r#"{"op":"save","work_blocks":[],"interval_minutes":"60","away_minutes":"10","reflection_day":"Fri",
+        let v2 = r##"{"op":"save","work_blocks":[],"interval_minutes":"60","away_minutes":"10","reflection_day":"Fri",
             "git_folders":[],"git_emails":[],"export_dir":"","autostart":false,"nachname":"Maurer","vorname":"Jemuel",
             "rest_auffuellen":true,"wochenplan":[{"tag":"Mon","ort":"Gibb"}],
             "orte":[{"name":"Gibb","tagessoll":8.4,"art":"schule"}],"uek_texte":{"taetigkeit":"üK"},
             "journal_dir":"D:\\J","vorlage_pfad":"","hotkey":"Ctrl+Shift+K","commit_erinnerung":false,
-            "aufklappen":"oben","snooze_minutes":"20"}"#;
+            "aufklappen":"oben","snooze_minutes":"20","claude_limits":false,
+            "ring_five_hour":"#ABC","ring_seven_day":"8aa8cc","ring_context":"#5c5c5c","ring_warn":"#d6b878","ring_crit":"",
+            "ring_warn_at":"70","ring_crit_at":"90"}"##;
         assert!(matches!(
             parse_settings_msg(v2),
             Some(SettingsMsg::Save(i)) if i.nachname.as_deref() == Some("Maurer") && i.rest_auffuellen == Some(true)
@@ -380,7 +398,18 @@ mod tests {
                 && i.hotkey.as_deref() == Some("Ctrl+Shift+K") && i.commit_erinnerung == Some(false)
                 && i.journal_dir.as_deref() == Some("D:\\J")
                 && i.aufklappen.as_deref() == Some("oben") && i.snooze_minutes.as_deref() == Some("20")
+                && i.claude_limits == Some(false)
+                && i.ring_five_hour.as_deref() == Some("#ABC") && i.ring_seven_day.as_deref() == Some("8aa8cc")
+                && i.ring_context.as_deref() == Some("#5c5c5c") && i.ring_warn.as_deref() == Some("#d6b878")
+                && i.ring_crit.as_deref() == Some("")
+                && i.ring_warn_at.as_deref() == Some("70") && i.ring_crit_at.as_deref() == Some("90")
         ));
+        // Farbfelder mit falschem Typ lassen die ganze Nachricht scheitern
+        assert!(parse_settings_msg(
+            r#"{"op":"save","work_blocks":[],"interval_minutes":"1","away_minutes":"1","reflection_day":"Fri",
+            "git_folders":[],"git_emails":[],"export_dir":"","autostart":false,"ring_warn":5}"#
+        )
+        .is_none());
         assert!(matches!(parse_settings_msg(r#"{"op":"close"}"#), Some(SettingsMsg::Close)));
         assert!(matches!(parse_settings_msg(r#"{"op":"save_template"}"#), Some(SettingsMsg::SaveTemplate)));
         assert!(parse_settings_msg(r#"{"op":"save","work_days":["Montag"]}"#).is_none());
@@ -404,6 +433,13 @@ mod tests {
         assert!(parse_settings_msg(r#"{"op":"invalid"}"#).is_none());
         assert!(matches!(parse_settings_msg(r#"{"op":"tall","tall":true}"#), Some(SettingsMsg::Tall { tall: true })));
         assert!(parse_settings_msg(r#"{"op":"tall","tall":1}"#).is_none());
+    }
+
+    #[test]
+    fn parses_limits_messages() {
+        assert!(matches!(parse_limits_msg(r#"{"op":"close"}"#), Some(LimitsMsg::Close)));
+        assert!(parse_limits_msg(r#"{"op":"limits"}"#).is_none());
+        assert!(parse_limits_msg("close").is_none());
     }
 
     #[test]
@@ -464,6 +500,7 @@ mod tests {
             ("week", include_str!("./ui/week.html")),
             ("settings", include_str!("./ui/settings.html")),
             ("reminder", include_str!("./ui/reminder.html")),
+            ("limits", include_str!("./ui/limits.html")),
         ] {
             for bad in ["src=\"http", "href=\"http", "url(http", "@import", "fonts.googleapis"] {
                 assert!(!html.contains(bad), "{name}: {bad}");

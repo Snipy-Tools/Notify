@@ -27,6 +27,20 @@
     background: var(--muted);
     background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
+.pill.has-ring { gap: 10px; }
+.ring {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--card);
+    flex: none;
+    display: block;
+}
+.ring:hover, .ring[aria-expanded=true] { background: var(--muted); }
+.ring svg { display: block; }
 .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; cursor: grab; }
 .mid.solo { gap: 3px; }
 .l1 { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
@@ -34,14 +48,15 @@
 .l1 .o { font-size: 12px; color: var(--mfg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .l1 .o.status { color: var(--accent); flex: none; }
 .l2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.l2 .bar { width: 96px; flex: none; }
-.l2 .num { font-size: 12px; color: var(--mfg); white-space: nowrap; }
+.l2 .bar { width: 96px; flex: 0 1 96px; min-width: 32px; }
+.l2 .num { font-size: 12px; color: var(--mfg); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .l2.note { font-size: 12px; color: var(--mfg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 </head>
 <body>
 <div class="pill" id="pill">
     <div class="ico" id="ico"></div>
+    <button class="ring" id="ring" aria-label="Claude-Limits anzeigen" aria-expanded="false" hidden></button>
     <div class="mid" id="mid">
         <div class="l1"><span class="d" id="date"></span><span class="o" id="ort"></span></div>
         <div id="l2"></div>
@@ -74,6 +89,40 @@ function el(tag, cls, text) {
     return e;
 }
 
+// Ringfarben aus den Einstellungen (Rust liefert gültige "#rrggbb")
+function applyRingColors(c) {
+    if (!c) return;
+    const st = document.documentElement.style;
+    st.setProperty("--ring-five", c.five_hour);
+    st.setProperty("--ring-week", c.seven_day);
+    st.setProperty("--ring-ctx", c.context);
+    st.setProperty("--ring-warn", c.warn);
+    st.setProperty("--ring-crit", c.crit);
+}
+
+// Claude-Limits: drei Ringe (aussen 5 Stunden, Mitte Woche, innen Kontext); ohne Daten das Ort-Icon
+const RING_R = [19.5, 14, 8.5];
+function renderRing(limits, open) {
+    $("ico").hidden = !!limits;
+    $("ring").hidden = !limits;
+    $("pill").classList.toggle("has-ring", !!limits);
+    if (!limits) return;
+    let g = "";
+    limits.rings.forEach((r, i) => {
+        const base = '<circle class="rg ';
+        const common = '" cx="22" cy="22" r="' + RING_R[i] + '" stroke-width="3.5"';
+        g += base + 'track' + common + '/>';
+        if (r.pct) {
+            const warn = r.level === "ok" ? "" : " r-" + r.level;
+            g += base + "r-" + r.key + warn + common + ' stroke-dasharray="' + r.dash_pill + '"/>';
+        }
+    });
+    $("ring").innerHTML = '<svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><g transform="rotate(-90 22 22)">' + g + '</g></svg>';
+    $("ring").setAttribute("aria-label", limits.aria);
+    $("ring").title = limits.aria.replace("anzeigen: ", "");
+    $("ring").setAttribute("aria-expanded", open ? "true" : "false");
+}
+
 function render() {
     const d = state;
     const root = document.documentElement;
@@ -82,6 +131,8 @@ function render() {
 
     const done = !d.no_hours && d.level === "done";
     const over = !d.no_hours && d.level === "over";
+    applyRingColors(d.limits_colors);
+    renderRing(d.limits, d.limits_open);
     $("ico").innerHTML = svg(18, done ? 2.6 : 2, done ? ICONS.check : over ? ICONS.over : ICONS[d.art || "frei"]);
     $("date").textContent = d.short;
 
@@ -126,6 +177,7 @@ function onPill(d) { state = d; render(); }
 
 $("toggle").onclick = () => send({ op: "collapse", collapsed: state ? state.expanded : false });
 $("gear").onclick = () => send({ op: "settings" });
+$("ring").onclick = () => send({ op: "limits" });
 $("pill").addEventListener("mousedown", (e) => {
     if (e.button === 0 && !e.target.closest("button")) send({ op: "drag" });
 });

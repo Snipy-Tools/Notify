@@ -18,6 +18,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; padding: 28px; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .grid2.g16 { gap: 16px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.rc-thr { margin-top: 12px; grid-template-columns: repeat(2, minmax(0, 8rem)); }
 .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .sec { display: flex; flex-direction: column; gap: 12px; }
 .sec h2 { margin: 0; font-size: 15px; font-weight: 600; }
@@ -40,6 +41,24 @@ main { flex: 1; min-height: 0; overflow-y: auto; padding: 28px; }
 .block input[type=time] { width: 9rem; }
 .info { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; color: var(--mfg); line-height: 1.45; }
 .info svg { margin-top: 1px; }
+.rc { background: var(--card); border-radius: var(--r-card); padding: 6px 18px 8px; display: flex; flex-direction: column; }
+.rc .rc-top { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.rc .rc-prev { width: 56px; height: 56px; border-radius: 50%; background: var(--bg); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; flex: none; }
+.rc .rc-prev > span { width: 44px; height: 44px; border-radius: 50%; background: var(--card); display: flex; }
+.rc .rc-top .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rc .rc-top .tx b { font-size: 13px; font-weight: 500; }
+.rc .rc-top .tx span { font-size: 12px; color: var(--mfg); }
+.rc .rc-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-height: 48px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.rc .rc-row:last-child { border-bottom: 0; }
+.rc .rc-row .nm { width: 128px; flex: none; font-size: 13px; font-weight: 500; }
+.rc .rc-row .nm small { display: block; font-size: 11px; font-weight: 400; color: var(--mfg); }
+.rc .chip { width: 24px; height: 24px; border-radius: 8px; border: 1px solid rgba(255,255,255,.18); flex: none; }
+.rc input.hex { width: 6.6rem; height: 34px; padding: 0 10px; font-size: 13px; background: var(--bg); border-radius: 10px; font-variant-numeric: tabular-nums; }
+.rc .sw { display: flex; gap: 6px; flex-wrap: wrap; }
+.rc .sw button { width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid rgba(255,255,255,.18); cursor: pointer; }
+.rc .sw button[aria-pressed=true] { outline: 2px solid var(--fg); outline-offset: 2px; }
+.rc .low { font-size: 11px; color: var(--hinweis); }
+.rc .low[hidden], .sec[hidden] { display: none; }
 footer { display: flex; align-items: center; gap: 10px; padding: 16px 28px 24px; border-top: 1px solid var(--line); flex: none; }
 footer .msg { flex: 1; min-width: 0; font-size: 12px; color: var(--mfg); overflow-wrap: anywhere; line-height: 1.4; }
 footer .msg.bad { color: var(--over); }
@@ -89,6 +108,28 @@ footer .btn.primary { padding: 0 20px; }
             <div class="toggle-card">
                 <div class="t"><b>Mit Windows starten</b><span>Die Leiste ist nach der Anmeldung sofort da.</span></div>
                 <button class="switch" id="autostart" role="switch" aria-checked="false" aria-label="Mit Windows starten"></button>
+            </div>
+            <div class="toggle-card">
+                <div class="t"><b>Claude-Limits in der Pille anzeigen</b><span>Drei Ringe für 5-Stunden-Limit, Wochenlimit und Kontext statt des Ort-Icons. Aus: immer das Ort-Icon.</span></div>
+                <button class="switch" id="claude-limits" role="switch" aria-checked="true" aria-label="Claude-Limits in der Pille anzeigen"></button>
+            </div>
+            <div class="sec" id="ring-sec">
+                <div class="hd">
+                    <h2>Ringfarben</h2>
+                    <span class="sub">Hex-Wert eintippen (#RRGGBB oder #RGB) oder ein Farbfeld anklicken. Warn- und Kritisch-Farbe färben nur den betroffenen Ring.</span>
+                </div>
+                <div class="rc">
+                    <div class="rc-top">
+                        <div class="rc-prev" aria-hidden="true"><span id="rc-preview"></span></div>
+                        <div class="tx"><b>Vorschau</b><span>Aussen 42 %, Mitte 27 %, innen 61 %</span></div>
+                        <button class="btn sm" id="ring-reset" type="button">Standardfarben</button>
+                    </div>
+                    <div id="rc-rows"></div>
+                    <div class="grid3 rc-thr">
+                        <label class="field">Warnung ab (%)<input type="text" id="ring-warn-at" inputmode="numeric"></label>
+                        <label class="field">Kritisch ab (%)<input type="text" id="ring-crit-at" inputmode="numeric"></label>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -173,6 +214,17 @@ const ART_ICON = {
     ferien: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
     uek: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/>',
 };
+const RING_FIELDS = [
+    ["ring_five_hour", "5-Stunden-Limit", "äusserer Ring", "#ededed"],
+    ["ring_seven_day", "Wochenlimit", "mittlerer Ring", "#8a8a8a"],
+    ["ring_context", "Kontext", "innerer Ring", "#5c5c5c"],
+    ["ring_warn", "Warnung", "", "#d6b878"],
+    ["ring_crit", "Kritisch", "", "#d28f8f"],
+];
+const RING_PRESETS = [["Weiss", "#ededed"], ["Grau", "#8a8a8a"], ["Dunkelgrau", "#5c5c5c"], ["Staubblau", "#8aa8cc"], ["Lavendel", "#a99bc7"], ["Sand", "#c2a27e"], ["Salbei", "#84b3a6"], ["Gelb", "#d6b878"], ["Rot", "#d28f8f"]];
+const RING_TRACK = "#1c1c1c";
+const RING_RADII = [19.5, 14, 8.5];
+const RING_PREVIEW_PCT = [42, 27, 61];
 const TALL_TABS = new Set(["vorlage"]);
 let loaded = null;
 let orte = [];
@@ -248,6 +300,102 @@ function updatePreview() {
     $("file-preview").textContent = "Dateiname: Arbeitsjournal-" + n + "-" + v + "-" + weekInfo.year + "-" + kw + ".docx";
 }
 
+// --- Ringfarben (kein natives Farbfenster: es würde das Einstellungsfenster schliessen) ---
+// Gleiche Regeln wie limits::normalize_hex und limits::hardly_visible in Rust
+function normalizeHex(text) {
+    const t = text.trim();
+    const d = t.startsWith("#") ? t.slice(1) : t;
+    if (!/^[0-9a-fA-F]+$/.test(d)) return null;
+    if (d.length === 6) return "#" + d.toLowerCase();
+    if (d.length === 3) return "#" + d.toLowerCase().replace(/./g, (c) => c + c);
+    return null;
+}
+function luminance(hex) {
+    const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    const [r, g, b] = v.map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contrast(a, b) {
+    const [x, y] = [luminance(a), luminance(b)];
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+const hardlyVisible = (hex) => contrast(hex, RING_TRACK) < 1.5;
+const ringInput = (key) => $("rc-" + key);
+
+function updateRingPreview() {
+    let g = "";
+    ["ring_five_hour", "ring_seven_day", "ring_context"].forEach((key, i) => {
+        const def = RING_FIELDS.find((f) => f[0] === key)[3];
+        const color = normalizeHex(ringInput(key).value) || def;
+        const c = 2 * Math.PI * RING_RADII[i];
+        const dash = (c * RING_PREVIEW_PCT[i] / 100).toFixed(1) + " " + c.toFixed(1);
+        const common = '" cx="22" cy="22" r="' + RING_RADII[i] + '" stroke-width="3.5" fill="none" stroke-linecap="round"';
+        g += '<circle stroke="' + RING_TRACK + common + "/>";
+        g += '<circle stroke="' + color + common + ' stroke-dasharray="' + dash + '"/>';
+    });
+    $("rc-preview").innerHTML = '<svg width="44" height="44" viewBox="0 0 44 44"><g transform="rotate(-90 22 22)">' + g + "</g></svg>";
+}
+function syncRingRow(key) {
+    const input = ringInput(key);
+    const hex = normalizeHex(input.value);
+    const row = input.closest(".rc-row");
+    row.querySelector(".chip").style.background = hex || "transparent";
+    row.querySelector(".low").hidden = !(hex && hardlyVisible(hex));
+    for (const b of row.querySelectorAll(".sw button")) b.setAttribute("aria-pressed", b.dataset.hex === hex ? "true" : "false");
+}
+function setRingColor(key, value) {
+    ringInput(key).value = value;
+    syncRingRow(key);
+    updateRingPreview();
+    revalidate();
+}
+function buildRingColors(s) {
+    $("rc-rows").replaceChildren(...RING_FIELDS.map(([key, label, sub, def]) => {
+        const row = el("div", "rc-row");
+        const nm = el("div", "nm", label);
+        const small = el("small", "", sub);
+        small.id = "rc-" + key + "-sub";
+        nm.append(small);
+        const chip = el("span", "chip");
+        const input = textInput(normalizeHex(String(s[key] || "")) || def);
+        input.id = "rc-" + key;
+        input.className = "hex";
+        input.spellcheck = false;
+        input.maxLength = 12;
+        input.setAttribute("aria-label", "Hex-Farbe " + label);
+        input.addEventListener("input", () => { syncRingRow(key); updateRingPreview(); revalidate(); });
+        input.addEventListener("blur", () => {
+            const n = normalizeHex(input.value);
+            if (n) { input.value = n; syncRingRow(key); }
+        });
+        const sw = el("div", "sw");
+        sw.setAttribute("role", "group");
+        sw.setAttribute("aria-label", "Farbfelder " + label);
+        for (const [name, hex] of RING_PRESETS) {
+            const b = el("button");
+            b.type = "button";
+            b.dataset.hex = hex;
+            b.style.background = hex;
+            b.title = name + " " + hex;
+            b.setAttribute("aria-label", name + " " + hex);
+            b.onclick = () => setRingColor(key, hex);
+            sw.append(b);
+        }
+        const low = el("span", "low", "Ring kaum sichtbar");
+        low.hidden = true;
+        row.append(nm, chip, input, sw, low);
+        return row;
+    }));
+    RING_FIELDS.forEach(([key]) => syncRingRow(key));
+    updateRingPreview();
+}
+function syncThresholdLabels() {
+    const text = (id, fallback) => (/^\d{1,3}$/.test($(id).value.trim()) ? $(id).value.trim() : fallback);
+    $("rc-ring_warn-sub").textContent = "ab " + text("ring-warn-at", "?") + " %";
+    $("rc-ring_crit-sub").textContent = "ab " + text("ring-crit-at", "?") + " %";
+}
+function syncRingSection() { $("ring-sec").hidden = !isOn("claude-limits"); }
+
 function info(text, bad) {
     $("msg").textContent = text;
     $("msg").className = "msg" + (bad ? " bad" : "");
@@ -293,6 +441,9 @@ function onSettings(data) {
     $("hotkey").value = s.hotkey;
     setSeg($("dir"), s.aufklappen);
     setOn("autostart", data.autostart);
+    setOn("claude-limits", s.claude_limits !== false);
+    buildRingColors(s);
+    syncRingSection();
 
     orte = s.orte;
     buildPlan(s);
@@ -335,6 +486,9 @@ function onSettings(data) {
     updatePreview();
 
     $("interval").value = s.interval_minutes;
+    $("ring-warn-at").value = s.ring_warn_at;
+    $("ring-crit-at").value = s.ring_crit_at;
+    syncThresholdLabels();
     $("snooze").value = s.snooze_minutes;
     $("away").value = s.away_minutes;
     $("blocks").replaceChildren();
@@ -391,6 +545,19 @@ function problems() {
     if (!num($("interval").value, 1, 480)) add("erinnerungen", $("interval"), "Das Intervall muss eine ganze Zahl von 1 bis 480 sein");
     if (!num($("snooze").value, 1, 240)) add("erinnerungen", $("snooze"), '"Später erinnern" muss eine ganze Zahl von 1 bis 240 sein');
     if (!num($("away").value, 1, 240)) add("erinnerungen", $("away"), "Die Weg-Schwelle muss eine ganze Zahl von 1 bis 240 sein");
+    if (isOn("claude-limits")) {
+        for (const [key, label] of RING_FIELDS) {
+            const input = ringInput(key);
+            if (!normalizeHex(input.value)) add("allgemein", input, 'Die Ringfarbe "' + label + '" ist ungültig (erwartet #RRGGBB, z. B. #8aa8cc)');
+        }
+        const warn = $("ring-warn-at"), crit = $("ring-crit-at");
+        const okWarn = num(warn.value, 1, 100), okCrit = num(crit.value, 1, 100);
+        if (!okWarn) add("allgemein", warn, "Die Warnschwelle muss eine ganze Zahl von 1 bis 100 sein");
+        if (!okCrit) add("allgemein", crit, "Die kritische Schwelle muss eine ganze Zahl von 1 bis 100 sein");
+        if (okWarn && okCrit && Number(warn.value.trim()) >= Number(crit.value.trim())) {
+            add("allgemein", warn, "Die Warnschwelle muss unter der kritischen Schwelle liegen");
+        }
+    }
     const rows = [...$("blocks").children];
     if (!rows.length) add("erinnerungen", $("add-block"), "Mindestens eine Arbeitszeit ist nötig");
     for (const row of rows) {
@@ -442,6 +609,13 @@ function save() {
         hotkey: $("hotkey").value,
         aufklappen: segValue($("dir")),
         autostart: isOn("autostart"),
+        claude_limits: isOn("claude-limits"),
+        // Ist der Schalter aus, bleibt der Bereich verborgen und die gespeicherten Farben unverändert
+        ...(isOn("claude-limits") ? {
+            ...Object.fromEntries(RING_FIELDS.map(([key]) => [key, ringInput(key).value])),
+            ring_warn_at: $("ring-warn-at").value,
+            ring_crit_at: $("ring-crit-at").value,
+        } : {}),
         wochenplan,
         orte: sollOrte,
         rest_auffuellen: isOn("rest"),
@@ -465,11 +639,13 @@ function save() {
 }
 
 for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => showTab(b.dataset.tab);
-for (const id of ["autostart", "rest", "commit-hint"]) $(id).onclick = () => setOn(id, !isOn(id));
+for (const id of ["autostart", "claude-limits", "rest", "commit-hint"]) $(id).onclick = () => { setOn(id, !isOn(id)); syncRingSection(); revalidate(); };
+$("ring-reset").onclick = () => { for (const [key, , , def] of RING_FIELDS) setRingColor(key, def); };
 for (const b of $("dir").querySelectorAll("button")) b.onclick = () => setSeg($("dir"), b.dataset.v);
 for (const b of document.querySelectorAll("[data-pick]")) b.onclick = () => send({ op: "pick", field: b.dataset.pick, kind: b.dataset.kind });
 for (const id of ["nachname", "vorname"]) $(id).addEventListener("input", updatePreview);
 for (const id of ["hotkey", "interval", "snooze", "away", "git-emails"]) $(id).addEventListener("input", revalidate);
+for (const id of ["ring-warn-at", "ring-crit-at"]) $(id).addEventListener("input", () => { syncThresholdLabels(); revalidate(); });
 $("add-block").onclick = () => { addBlock("", ""); revalidate(); };
 $("save-template").onclick = () => send({ op: "save_template" });
 $("save").onclick = save;

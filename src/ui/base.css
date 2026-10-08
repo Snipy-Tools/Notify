@@ -253,3 +253,13 @@ input:focus-visible, textarea:focus-visible { outline: 0; border-color: rgba(255
 .bar { height: 6px; border-radius: 999px; background: var(--muted); overflow: hidden; }
 .bar > i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
 .bar.thin { height: 4px; }
+
+/* Claude-Limits: Ringe (Pille und Karte) */
+.rg { fill: none; stroke-linecap: round; }
+.rg.track { stroke: var(--muted); }
+/* Farben kommen aus den Einstellungen (--ring-*, von applyRingColors gesetzt), die Standards stehen hier als Rückfall */
+.rg.r-five_hour { stroke: var(--ring-five, #ededed); }
+.rg.r-seven_day { stroke: var(--ring-week, #8a8a8a); }
+.rg.r-context { stroke: var(--ring-ctx, #5c5c5c); }
+.rg.r-warn { stroke: var(--ring-warn, #d6b878); }
+.rg.r-crit { stroke: var(--ring-crit, #d28f8f); }

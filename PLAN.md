@@ -55,3 +55,10 @@ Gewählt: Recur-Look (shadcn `base-nova`, neutral, Dark, Geist, lucide-Icons, Ra
 - `cargo check` und `cargo test` nach jeder Phase (Stand vor dem Umbau: 98 Tests grün).
 - Export-Test: KW30-Dokument aus Beispieldaten erzeugen und in Word öffnen; Ferienwoche und üK-Woche separat.
 - Manuell: Fenster bleibt oben, stiehlt keinen Fokus, Position wird gemerkt.
+
+## Stand 2026-10-08 (Übergabe)
+- Gepusht: `6d6335f` auf Snipy-Tools/Notify (Journal, Wochenplan, Export, Theme, Pille/Panel, Popup-Einstellungen).
+- Lokal, nicht committet: Claude-Limits-Ring (src/limits.rs, ui/limits.html, pill.html, settings.*). Datenquelle: `%APPDATA%\notify\claude-limits.json`, geschrieben von `C:\Privat\Projekte\Recapr\hooks\statusline.js`.
+- Offen (Agent lief beim Herunterfahren): Einstellungen für Ringfarben (5h, Woche, Kontext, Warnfarbe, Kritisch-Farbe; Hex-Feld + Swatches, KEIN nativer Farbdialog, da das Popup bei Fokusverlust schliesst) und für die Schwellen (Warnung ab 80 %, Kritisch ab 95 %, warn < kritisch, 1..=100). Wirkt live auf Pille und Detailkarte.
+- Danach: `cargo test --offline`, README um Claude-Limits/statusline.js ergänzen, committen (ohne Co-Autor, Autor JM2101), pushen.
+- Sicherungen: Notify.bak-2026-10-08, Notify.bak-phase3 (neben dem Repo).

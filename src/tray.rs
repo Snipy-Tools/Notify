@@ -1,7 +1,7 @@
 use crate::git::Commit;
 use crate::recap::{Recap, State};
 use crate::settings::DayKind;
-use crate::windows::{BarMsg, ReminderMsg, SettingsMsg, WeekMsg};
+use crate::windows::{BarMsg, LimitsMsg, ReminderMsg, SettingsMsg, WeekMsg};
 use tao::event_loop::{ControlFlow, EventLoop};
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
@@ -36,6 +36,7 @@ pub enum UserEvent {
     Week(WeekMsg),
     Settings(SettingsMsg),
     Reminder(ReminderMsg),
+    Limits(LimitsMsg),
     Hotkey,
     Commits(Vec<Commit>),
     /// Ergebnis des Datei- oder Ordnerdialogs der Einstellungen (`None`: abgebrochen)
@@ -145,6 +146,7 @@ impl Tray {
             UserEvent::Week(msg) => recap.handle_week(msg),
             UserEvent::Settings(msg) => recap.handle_settings(msg),
             UserEvent::Reminder(msg) => recap.handle_reminder(msg),
+            UserEvent::Limits(msg) => recap.handle_limits(msg),
             UserEvent::Hotkey => recap.toggle_bar(),
             UserEvent::Commits(commits) => recap.ingest(commits),
             UserEvent::Picked { field, path } => recap.picked(field, path),
