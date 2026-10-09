@@ -125,6 +125,7 @@ impl Aufklappen {
 }
 
 pub const MAX_SNOOZE_MINUTES: u32 = 240;
+pub const MAX_BALL_SECONDS: u32 = 3600;
 
 /// Name ohne Leerraum und ohne führendes `@`
 pub fn clean_ort_name(name: &str) -> &str {
@@ -248,6 +249,8 @@ pub struct Settings {
     pub aufklappen: Aufklappen,
     /// Nach "In ... min" im Hinweis erinnert die App nach so vielen Minuten nochmal
     pub snooze_minutes: u32,
+    /// Nach so vielen Sekunden ohne Eingabe schrumpft die Pille zur Kugel
+    pub ball_seconds: u32,
     /// Claude-Limits als Ringe in der Pille zeigen (aus: immer das Ort-Icon, die Datei wird nicht gelesen)
     pub claude_limits: bool,
     /// Ringfarben der Claude-Limits, "#rrggbb": aussen 5 Stunden, Mitte Woche, innen Kontext, Warnstufe ab 80 %, kritisch ab 95 %
@@ -300,6 +303,7 @@ impl Default for Settings {
             commit_erinnerung: true,
             aufklappen: Aufklappen::Auto,
             snooze_minutes: 15,
+            ball_seconds: 300,
             claude_limits: true,
             ring_five_hour: limits::DEFAULT_FIVE_HOUR.into(),
             ring_seven_day: limits::DEFAULT_SEVEN_DAY.into(),
@@ -441,6 +445,9 @@ impl Settings {
         if !(1..=MAX_SNOOZE_MINUTES).contains(&self.snooze_minutes) {
             return Err(format!("\"Später erinnern\" muss zwischen 1 und {MAX_SNOOZE_MINUTES} Minuten liegen"));
         }
+        if !(1..=MAX_BALL_SECONDS).contains(&self.ball_seconds) {
+            return Err(format!("\"Kugel nach\" muss zwischen 1 und {MAX_BALL_SECONDS} Sekunden liegen"));
+        }
         let plan = self.plan();
         plan.check()?;
         let has_work_day = plan.wochenplan.iter().any(|p| plan.find(&p.ort).is_some_and(|o| o.art == DayKind::Arbeit));
@@ -527,6 +534,8 @@ pub struct SettingsInput {
     #[serde(default)]
     pub snooze_minutes: Option<String>,
     #[serde(default)]
+    pub ball_seconds: Option<String>,
+    #[serde(default)]
     pub claude_limits: Option<bool>,
     /// Ringfarben als "#RRGGBB" (auch "#RGB" oder ohne "#")
     #[serde(default)]
@@ -590,6 +599,10 @@ impl SettingsInput {
             snooze_minutes: match &self.snooze_minutes {
                 Some(text) => parse_whole("\"Später erinnern\"", text)?,
                 None => base.snooze_minutes,
+            },
+            ball_seconds: match &self.ball_seconds {
+                Some(text) => parse_whole("\"Kugel nach\"", text)?,
+                None => base.ball_seconds,
             },
             claude_limits: self.claude_limits.unwrap_or(base.claude_limits),
             ring_five_hour: ring_color("5 Stunden", self.ring_five_hour, &base.ring_five_hour)?,
@@ -953,6 +966,7 @@ mod tests {
             commit_erinnerung: None,
             aufklappen: None,
             snooze_minutes: None,
+            ball_seconds: None,
             claude_limits: None,
             ring_five_hour: None,
             ring_seven_day: None,

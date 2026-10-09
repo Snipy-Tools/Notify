@@ -250,7 +250,8 @@ impl Recap {
         proxy: EventLoopProxy<UserEvent>,
     ) -> Result<Self, String> {
         let settings = Settings::load();
-        let bar = Bar::new(target, proxy.clone(), settings.aufklappen)?;
+        let mut bar = Bar::new(target, proxy.clone(), settings.aufklappen)?;
+        bar.set_idle(Duration::from_secs(u64::from(settings.ball_seconds)));
         let reminder = ReminderWindow::new(target, proxy.clone())?;
         let week_proxy = proxy.clone();
         let week = Popup::new(
@@ -382,7 +383,8 @@ impl Recap {
             self.next_limits = now + LIMITS_POLL;
             self.poll_limits();
         }
-        if self.bar.tick() {
+        let busy = self.settings_win.is_visible() || self.limits_win.is_visible() || self.week.is_visible();
+        if self.bar.tick(busy) {
             // die Pille ist eingerastet: Pfeilrichtung neu bestimmen, Popover neu verankern
             self.refresh_pill();
             self.anchor_popovers();
@@ -676,8 +678,10 @@ impl Recap {
 
     pub fn handle_bar(&mut self, msg: BarMsg) {
         let today = Local::now().date_naive();
+        self.bar.touch();
         let result = match msg {
             BarMsg::Ready => Ok(()),
+            BarMsg::Activity => return,
             BarMsg::Nav { delta } => {
                 self.bar_date = view::shift(self.bar_date, delta, today);
                 Ok(())
@@ -1179,6 +1183,7 @@ impl Recap {
         self.journal = Journal::from_settings(&settings);
         self.marker = None;
         self.bar.set_pref(settings.aufklappen);
+        self.bar.set_idle(Duration::from_secs(u64::from(settings.ball_seconds)));
         let limits_toggled = settings.claude_limits != self.settings.claude_limits;
         let thresholds_changed = settings.ring_thresholds() != self.settings.ring_thresholds();
         self.settings = settings;

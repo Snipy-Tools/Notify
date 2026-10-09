@@ -10,7 +10,7 @@ use std::process::Command;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
     CreateRoundRectRgn, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, SetWindowRgn,
 };
@@ -33,7 +33,8 @@ use windows_sys::Win32::UI::Shell::{
     SHGetKnownFolderPath, SHGetPathFromIDListW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GA_ROOTOWNER, GetAncestor, GetForegroundWindow, GetMessageW,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GA_ROOTOWNER, GetAncestor, GetCursorPos, GetForegroundWindow,
+    GetMessageW,
     HWND_TOPMOST, MB_ICONERROR, MB_OK, MSG, MessageBoxW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE,
     SWP_NOMOVE, SWP_NOSIZE, SetWindowPos, ShowWindow, WNDCLASSW,
 };
@@ -179,6 +180,12 @@ pub fn pick_docx(owner: isize, title: &str) -> Option<PathBuf> {
 pub fn hide_window(hwnd: isize) {
     // SAFETY: `hwnd` gehört zu einem lebenden Fenster dieser App
     unsafe { ShowWindow(hwnd as HWND, SW_HIDE) };
+}
+
+pub fn cursor_pos() -> Option<(i32, i32)> {
+    let mut point = POINT { x: 0, y: 0 };
+    // SAFETY: `point` ist initialisiert und gültig für den Schreibzugriff
+    (unsafe { GetCursorPos(&mut point) } != 0).then_some((point.x, point.y))
 }
 
 /// Zeit seit der letzten Tastatur- oder Mauseingabe

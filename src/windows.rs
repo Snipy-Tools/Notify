@@ -64,6 +64,8 @@ pub enum BarMsg {
     Week,
     Hide,
     Drag,
+    /// Pille: Maus darüber (weckt die Kugel auf)
+    Activity,
 }
 
 /// Nachrichten der Wochenansicht
@@ -336,6 +338,7 @@ mod tests {
         assert!(matches!(parse_bar_msg(r#"{"op":"week"}"#), Some(BarMsg::Week)));
         assert!(matches!(parse_bar_msg(r#"{"op":"hide"}"#), Some(BarMsg::Hide)));
         assert!(matches!(parse_bar_msg(r#"{"op":"drag"}"#), Some(BarMsg::Drag)));
+        assert!(matches!(parse_bar_msg(r#"{"op":"activity"}"#), Some(BarMsg::Activity)));
         assert!(parse_bar_msg(r#"{"op":"unbekannt"}"#).is_none());
         assert!(parse_bar_msg(r#"{"op":"delete"}"#).is_none());
         assert!(parse_bar_msg(r#"{"op":"collapse"}"#).is_none());

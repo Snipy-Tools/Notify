@@ -37,6 +37,10 @@ impl Rect {
         self.y + self.h
     }
 
+    pub const fn contains(&self, x: i32, y: i32) -> bool {
+        x >= self.x && x < self.right() && y >= self.y && y < self.bottom()
+    }
+
     pub fn intersects(&self, other: &Rect) -> bool {
         self.x < other.right() && other.x < self.right() && self.y < other.bottom() && other.y < self.bottom()
     }

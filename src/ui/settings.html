@@ -175,6 +175,7 @@ footer .btn.primary { padding: 0 20px; }
                 <label class="field">Intervall (Minuten)<input type="text" id="interval" inputmode="numeric"></label>
                 <label class="field">Später erinnern (Minuten)<input type="text" id="snooze" inputmode="numeric"></label>
                 <label class="field">Weg-Schwelle (Minuten)<input type="text" id="away" inputmode="numeric"></label>
+                <label class="field">Kugel nach (Sekunden)<input type="text" id="ball" inputmode="numeric"></label>
             </div>
             <div class="toggle-card">
                 <div class="t"><b>Nach neuem Git-Commit erinnern</b><span>Höchstens eine Erinnerung pro Intervall, nur in der Arbeitszeit.</span></div>
@@ -490,6 +491,7 @@ function onSettings(data) {
     $("ring-crit-at").value = s.ring_crit_at;
     syncThresholdLabels();
     $("snooze").value = s.snooze_minutes;
+    $("ball").value = s.ball_seconds;
     $("away").value = s.away_minutes;
     $("blocks").replaceChildren();
     s.work_blocks.forEach((b) => addBlock(b.start, b.end));
@@ -544,6 +546,7 @@ function problems() {
     }
     if (!num($("interval").value, 1, 480)) add("erinnerungen", $("interval"), "Das Intervall muss eine ganze Zahl von 1 bis 480 sein");
     if (!num($("snooze").value, 1, 240)) add("erinnerungen", $("snooze"), '"Später erinnern" muss eine ganze Zahl von 1 bis 240 sein');
+    if (!num($("ball").value, 1, 3600)) add("erinnerungen", $("ball"), '"Kugel nach" muss eine ganze Zahl von 1 bis 3600 sein');
     if (!num($("away").value, 1, 240)) add("erinnerungen", $("away"), "Die Weg-Schwelle muss eine ganze Zahl von 1 bis 240 sein");
     if (isOn("claude-limits")) {
         for (const [key, label] of RING_FIELDS) {
@@ -626,6 +629,7 @@ function save() {
         uek_texte: autoTexts("uek_texte"),
         interval_minutes: $("interval").value,
         snooze_minutes: $("snooze").value,
+        ball_seconds: $("ball").value,
         away_minutes: $("away").value,
         work_blocks: [...$("blocks").children].map((row) => {
             const [a, b] = row.querySelectorAll("input");
@@ -644,7 +648,7 @@ $("ring-reset").onclick = () => { for (const [key, , , def] of RING_FIELDS) setR
 for (const b of $("dir").querySelectorAll("button")) b.onclick = () => setSeg($("dir"), b.dataset.v);
 for (const b of document.querySelectorAll("[data-pick]")) b.onclick = () => send({ op: "pick", field: b.dataset.pick, kind: b.dataset.kind });
 for (const id of ["nachname", "vorname"]) $(id).addEventListener("input", updatePreview);
-for (const id of ["hotkey", "interval", "snooze", "away", "git-emails"]) $(id).addEventListener("input", revalidate);
+for (const id of ["hotkey", "interval", "snooze", "away", "ball", "git-emails"]) $(id).addEventListener("input", revalidate);
 for (const id of ["ring-warn-at", "ring-crit-at"]) $(id).addEventListener("input", () => { syncThresholdLabels(); revalidate(); });
 $("add-block").onclick = () => { addBlock("", ""); revalidate(); };
 $("save-template").onclick = () => send({ op: "save_template" });
