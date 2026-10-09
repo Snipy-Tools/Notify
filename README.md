@@ -90,7 +90,7 @@ Exit-Code 0 bei Erfolg, 1 bei Fehler, 2 bei einer unbekannten Option. Das funkti
 Statt des Ort-Icons zeigt die Pille drei Ringe: aussen das 5-Stunden-Limit, in der Mitte das Wochenlimit, innen den Kontext. Ein Klick öffnet eine Karte mit Prozenten und Reset-Zeiten.
 
 - Datenquelle ist `%APPDATA%
-otify\claude-limits.json`. Geschrieben wird sie von der Statuszeile `hooks\statusline.js` im Recapr-Projekt (in Claude Code als `statusLine` eintragen). Ist die Datei älter als 6 Stunden, gibt es keine Ringe.
+otify\claude-limits.json`. Geschrieben wird sie von der Statuszeile `hooks\statusline.js` in diesem Projekt (in Claude Code als `statusLine` eintragen). Ist die Datei älter als 6 Stunden, gibt es keine Ringe.
 - Einstellungen, Bereich "Allgemein": Schalter für die Anzeige, fünf Farben (Hex-Feld oder Farbfeld; ein Ring färbt sich bei Warnung bzw. kritisch um) und die beiden Schwellen. Standard: Warnung ab 80 %, kritisch ab 95 %. Die Warnschwelle muss unter der kritischen liegen (1 bis 100). Änderungen gelten sofort.
 
 ## Wo liegen die Daten
