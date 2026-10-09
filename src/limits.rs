@@ -522,13 +522,14 @@ impl LimitsWatcher {
                                 self.logged = None;
                             }
                             Err(e) => {
-                                self.current = None;
-                                self.complain(format!("claude-limits.json ungültig, keine Daten: {e}"));
+                                // Vermutlich halb geschrieben: letzte gültige Daten behalten, beim nächsten Poll neu lesen
+                                self.seen = None;
+                                self.complain(format!("claude-limits.json ungültig, behalte letzte Daten: {e}"));
                             }
                         },
                         Err(e) => {
+                            // z. B. kurz von der Statuszeile gesperrt: letzte Daten behalten und erneut versuchen
                             self.seen = None;
-                            self.current = None;
                             self.complain(format!("claude-limits.json nicht lesbar: {e}"));
                         }
                     }
@@ -979,17 +980,17 @@ mod tests {
         assert_eq!(w.current().unwrap().updated_at, NOW);
         // unverändert: kein neuer Inhalt
         assert!(!w.poll());
-        // halb geschrieben: keine Daten, kein Absturz; derselbe Fehler wird nur einmal geloggt
+        // halb geschrieben: letzte Daten bleiben, kein Absturz; derselbe Fehler wird nur einmal geloggt
         std::fs::write(&file, &FULL[..40]).unwrap();
-        assert!(w.poll());
-        assert!(w.current().is_none());
+        assert!(!w.poll());
+        assert!(w.current().is_some());
         let logged = w.logged.clone();
         assert!(logged.is_some());
         assert!(!w.poll());
         assert_eq!(w.logged, logged);
         // repariert
         std::fs::write(&file, FULL).unwrap();
-        assert!(w.poll());
+        w.poll();
         assert!(w.current().is_some() && w.logged.is_none());
         // gelöscht
         std::fs::remove_file(&file).unwrap();

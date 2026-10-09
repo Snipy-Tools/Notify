@@ -44,7 +44,15 @@ process.stdin.on("end", () => {
 
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(data));
+    // Erst in eine Temp-Datei, dann umbenennen: Notify liest nie eine halb geschriebene Datei
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(data));
+    try {
+      fs.renameSync(tmp, file);
+    } catch {
+      fs.writeFileSync(file, JSON.stringify(data));
+      try { fs.unlinkSync(tmp); } catch {}
+    }
   } catch {}
 
   const pct = (w) => (w ? Math.round(w.used_percentage) + "%" : "-");
