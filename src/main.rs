@@ -20,6 +20,7 @@ mod system;
 mod system;
 mod timer;
 mod tray;
+mod update;
 mod view;
 mod windows;
 

@@ -1,6 +1,7 @@
 use crate::git::Commit;
 use crate::recap::{Recap, State};
 use crate::settings::DayKind;
+use crate::update;
 use crate::windows::{BarMsg, LimitsMsg, ReminderMsg, SettingsMsg, WeekMsg};
 use tao::event_loop::{ControlFlow, EventLoop};
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu};
@@ -88,6 +89,7 @@ pub struct Tray {
     export_last_id: MenuId,
     journal_id: MenuId,
     settings_id: MenuId,
+    update_id: MenuId,
     day_ids: Vec<(MenuId, DayKind)>,
     quit_id: MenuId,
 }
@@ -105,6 +107,7 @@ impl Tray {
         let export_last = MenuItem::new("Letzte Woche exportieren", true, None);
         let journal = MenuItem::new("Journal-Ordner öffnen", true, None);
         let settings = MenuItem::new("Einstellungen ...", true, None);
+        let update = MenuItem::new("Nach Updates suchen ...", true, None);
         let today = Submenu::new("Heute ist ...", true);
         let mut day_ids = Vec::new();
         for (label, kind) in DAY_LABELS {
@@ -123,6 +126,7 @@ impl Tray {
             &export_last,
             &journal,
             &settings,
+            &update,
             &PredefinedMenuItem::separator(),
             &quit,
         ])
@@ -144,6 +148,7 @@ impl Tray {
             export_last_id: export_last.id().clone(),
             journal_id: journal.id().clone(),
             settings_id: settings.id().clone(),
+            update_id: update.id().clone(),
             day_ids,
             quit_id: quit.id().clone(),
         }
@@ -158,6 +163,7 @@ impl Tray {
             UserEvent::Menu(e) if e.id == self.export_last_id => recap.export(true),
             UserEvent::Menu(e) if e.id == self.journal_id => recap.open_journal_folder(),
             UserEvent::Menu(e) if e.id == self.settings_id => recap.open_settings(),
+            UserEvent::Menu(e) if e.id == self.update_id => update::check(),
             UserEvent::Menu(e) => {
                 if let Some(&(_, kind)) = self.day_ids.iter().find(|(id, _)| *id == e.id) {
                     recap.set_day(kind);

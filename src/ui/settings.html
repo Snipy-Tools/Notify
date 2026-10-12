@@ -659,7 +659,7 @@ $("ring-reset").onclick = () => { for (const [key, , , def] of RING_FIELDS) setR
 for (const b of $("dir").querySelectorAll("button")) b.onclick = () => setSeg($("dir"), b.dataset.v);
 for (const b of document.querySelectorAll("[data-pick]")) b.onclick = () => send({ op: "pick", field: b.dataset.pick, kind: b.dataset.kind });
 for (const id of ["nachname", "vorname"]) $(id).addEventListener("input", updatePreview);
-for (const id of ["hotkey", "interval", "snooze", "away", "ball", "git-emails"]) $(id).addEventListener("input", revalidate);
+for (const id of ["hotkey", "interval", "snooze", "away", "ball", "step", "git-emails"]) $(id).addEventListener("input", revalidate);
 for (const id of ["ring-warn-at", "ring-crit-at"]) $(id).addEventListener("input", () => { syncThresholdLabels(); revalidate(); });
 $("add-block").onclick = () => { addBlock("", ""); revalidate(); };
 $("save-template").onclick = () => send({ op: "save_template" });

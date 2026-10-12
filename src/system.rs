@@ -35,7 +35,7 @@ use windows_sys::Win32::UI::Shell::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GA_ROOTOWNER, GetAncestor, GetCursorPos, GetForegroundWindow,
     GetMessageW,
-    HWND_TOPMOST, MB_ICONERROR, MB_OK, MSG, MessageBoxW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE,
+    HWND_TOPMOST, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MB_YESNO, MSG, MessageBoxW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE,
     SWP_NOMOVE, SWP_NOSIZE, SetWindowPos, ShowWindow, WNDCLASSW,
 };
 
@@ -332,6 +332,24 @@ pub fn show_error(title: &str, text: &str) {
         // SAFETY: beide Puffer sind nullterminiert und leben bis zum Ende des Aufrufs
         unsafe { MessageBoxW(null_mut(), text.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR) };
     });
+}
+
+/// Zeigt eine Mitteilung, ohne die Oberfläche zu blockieren
+pub fn show_info(title: &str, text: &str) {
+    let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+    let (title, text) = (wide(title), wide(text));
+    std::thread::spawn(move || {
+        // SAFETY: beide Puffer sind nullterminiert und leben bis zum Ende des Aufrufs
+        unsafe { MessageBoxW(null_mut(), text.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION) };
+    });
+}
+
+/// Ja/Nein-Frage; blockiert den aufrufenden Thread bis zur Antwort
+pub fn ask(title: &str, text: &str) -> bool {
+    let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+    let (title, text) = (wide(title), wide(text));
+    // SAFETY: beide Puffer sind nullterminiert und leben bis zum Ende des Aufrufs
+    unsafe { MessageBoxW(null_mut(), text.as_ptr(), title.as_ptr(), MB_YESNO | MB_ICONINFORMATION) == IDYES }
 }
 
 /// Hängt die App an die Konsole des Aufrufers (nötig, weil sie sonst ohne Konsole startet)
