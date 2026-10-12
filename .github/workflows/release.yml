@@ -20,11 +20,11 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             bin: notify
-            asset: notify-macOS-arm64
+            asset: notify-macOS-arm64.dmg
           - os: macos-latest
             target: x86_64-apple-darwin
             bin: notify
-            asset: notify-macOS-x86_64
+            asset: notify-macOS-x86_64.dmg
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bin: notify
@@ -53,6 +53,7 @@ jobs:
           fi
 
       - name: Stage binary
+        if: runner.os != 'macOS'
         shell: bash
         run: |
           mkdir -p dist
@@ -61,6 +62,52 @@ jobs:
           else
             cp "target/release/${{ matrix.bin }}" "dist/${{ matrix.asset }}"
           fi
+
+      - name: Build macOS app and dmg
+        if: runner.os == 'macOS'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          APP="dist/stage/Notify.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" dist/icon.iconset
+          cp "target/${{ matrix.target }}/release/notify" "$APP/Contents/MacOS/notify"
+          python3 - "assets/notify.ico" dist/icon.png <<'PY'
+          import struct, sys
+          d = open(sys.argv[1], 'rb').read()
+          n = struct.unpack('<H', d[4:6])[0]
+          size, offset = max((struct.unpack('<II', d[14 + 16 * i:22 + 16 * i])[0], struct.unpack('<I', d[18 + 16 * i:22 + 16 * i])[0]) for i in range(n))
+          open(sys.argv[2], 'wb').write(d[offset:offset + size])
+          PY
+          for size in 16 32 64 128 256; do
+            sips -z $size $size dist/icon.png --out "dist/icon.iconset/icon_${size}x${size}.png"
+          done
+          cp dist/icon.iconset/icon_32x32.png dist/icon.iconset/icon_16x16@2x.png
+          cp dist/icon.iconset/icon_64x64.png dist/icon.iconset/icon_32x32@2x.png
+          cp dist/icon.iconset/icon_256x256.png dist/icon.iconset/icon_128x128@2x.png
+          rm dist/icon.iconset/icon_64x64.png
+          iconutil -c icns dist/icon.iconset -o "$APP/Contents/Resources/Notify.icns"
+          cat > "$APP/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>Notify</string>
+            <key>CFBundleDisplayName</key><string>Notify</string>
+            <key>CFBundleIdentifier</key><string>ch.notify.arbeitsjournal</string>
+            <key>CFBundleExecutable</key><string>notify</string>
+            <key>CFBundleIconFile</key><string>Notify</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleVersion</key><string>$VERSION</string>
+            <key>CFBundleShortVersionString</key><string>$VERSION</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>LSUIElement</key><true/>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          codesign --force --deep --sign - "$APP"
+          ln -s /Applications dist/stage/Applications
+          hdiutil create -volname "Notify" -srcfolder dist/stage -ov -format UDZO "dist/${{ matrix.asset }}"
+          rm -rf dist/stage dist/icon.iconset dist/icon.png
 
       - name: Build installer
         if: runner.os == 'Windows'
