@@ -61,7 +61,7 @@ Ungültige Eingaben werden gemeldet und nicht still korrigiert. Die Orte lassen 
 
 ## Export
 
-Der Export füllt eine Word-Vorlage (`.docx`) und schreibt `Arbeitsjournal-<nachname>-<vorname>-<jahr>-<KW>.docx` in den Exportordner
+Der Export füllt eine Word-Vorlage (`.docx` oder `.dotx`) und schreibt `Arbeitsjournal-<nachname>-<vorname>-<jahr>-<KW>.docx` in den Exportordner
 (Standard `Dokumente\Notify`); danach wird die Datei im Explorer markiert. Das Unterschriftsdatum ist der Freitag der Woche.
 Ohne eigene Vorlage wird die mitgelieferte benutzt; sie lässt sich in den Einstellungen (Vorlage) in den Exportordner speichern
 und als Ausgangspunkt für eine eigene verwenden. Platzhalter stehen in doppelten geschweiften Klammern, Unbekannte werden entfernt:

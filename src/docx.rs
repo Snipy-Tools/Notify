@@ -515,6 +515,13 @@ pub fn fill_template(template: &[u8], week: &WeekData) -> Result<Vec<u8>, String
             Ok(xml) if is_part && (xml.contains("{{") || file.name == "word/document.xml") => {
                 fill_part(xml, week, file.name == "word/document.xml")?.into_bytes()
             }
+            // Eine .dotx-Vorlage wird zum normalen Dokument, sonst öffnet Word sie als neue Vorlage
+            Ok(xml) if file.name == "[Content_Types].xml" => xml
+                .replace(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+                )
+                .into_bytes(),
             _ => file.data,
         };
         out.push((file.name, data));
@@ -943,6 +950,16 @@ mod tests {
         let (doc_b, head_b) = unpack_and_check(&from_split);
         assert_eq!(paragraphs(&doc_a), paragraphs(&doc_b));
         assert_eq!(paragraphs(&head_a), paragraphs(&head_b));
+    }
+
+    #[test]
+    fn dotx_template_becomes_a_regular_document() {
+        let ct = br#"<Types><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml"/></Types>"#;
+        let doc = br#"<w:document><w:body><w:p><w:r><w:t>{{TAG}}</w:t></w:r></w:p></w:body></w:document>"#;
+        let zip = zip_stored(&[("[Content_Types].xml", ct), ("word/document.xml", doc)]);
+        let out = read_zip(&fill_template(&zip, &week_data(&week_file(vec![]))).unwrap()).unwrap();
+        let types = String::from_utf8(out.iter().find(|f| f.name == "[Content_Types].xml").unwrap().data.clone()).unwrap();
+        assert!(types.contains("wordprocessingml.document.main+xml") && !types.contains("template.main+xml"));
     }
 
     #[test]
