@@ -4,6 +4,7 @@ use chrono::{DateTime, Days, NaiveDate, Utc};
 use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
+#[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -13,7 +14,25 @@ use std::time::{Duration, Instant};
 pub const LOOKBACK_DAYS: u64 = 7;
 const MAX_DEPTH: usize = 4;
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+trait NoWindow {
+    fn no_window(&mut self) -> &mut Self;
+}
+
+impl NoWindow for Command {
+    #[cfg(windows)]
+    fn no_window(&mut self) -> &mut Self {
+        self.creation_flags(CREATE_NO_WINDOW)
+    }
+
+    #[cfg(not(windows))]
+    fn no_window(&mut self) -> &mut Self {
+        self
+    }
+}
+
 const SKIP_DIRS: [&str; 4] = ["node_modules", "target", "__pycache__", "venv"];
 const MAX_SUBJECT: usize = 500;
 
@@ -132,7 +151,7 @@ fn run_git(repo: &Path, args: &[&str]) -> Result<String, String> {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .creation_flags(CREATE_NO_WINDOW)
+        .no_window()
         .spawn()
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -418,7 +437,7 @@ mod tests {
     }
 
     fn git_available() -> bool {
-        Command::new("git").arg("--version").creation_flags(CREATE_NO_WINDOW).output().is_ok()
+        Command::new("git").arg("--version").no_window().output().is_ok()
     }
 
     fn git(dir: &Path, args: &[&str]) {
@@ -426,7 +445,7 @@ mod tests {
             .arg("-C")
             .arg(dir)
             .args(args)
-            .creation_flags(CREATE_NO_WINDOW)
+            .no_window()
             .status()
             .unwrap();
         assert!(status.success(), "git {args:?}");

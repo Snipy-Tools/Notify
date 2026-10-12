@@ -7,6 +7,9 @@ use serde::Deserialize;
 use tao::dpi::{LogicalSize, PhysicalPosition};
 use tao::event::WindowEvent;
 use tao::event_loop::EventLoopWindowTarget;
+#[cfg(target_os = "linux")]
+use tao::platform::unix::WindowBuilderExtUnix;
+#[cfg(windows)]
 use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
 use tao::window::{Window, WindowBuilder, WindowId};
 use wry::{WebContext, WebView, WebViewBuilder};
@@ -172,19 +175,20 @@ impl Popup {
         radius: f64,
         on_message: impl Fn(String) + 'static,
     ) -> Result<Self, String> {
-        let window = WindowBuilder::new()
+        let builder = WindowBuilder::new()
             .with_title(title)
             .with_decorations(false)
             .with_transparent(true)
             .with_always_on_top(true)
             .with_resizable(false)
-            .with_skip_taskbar(true)
-            .with_undecorated_shadow(false)
             .with_focused(false)
             .with_visible(false)
-            .with_inner_size(LogicalSize::new(size.0, size.1))
-            .build(target)
-            .map_err(|e| format!("Fenster {title}: {e}"))?;
+            .with_inner_size(LogicalSize::new(size.0, size.1));
+        #[cfg(any(windows, target_os = "linux"))]
+        let builder = builder.with_skip_taskbar(true);
+        #[cfg(windows)]
+        let builder = builder.with_undecorated_shadow(false);
+        let window = builder.build(target).map_err(|e| format!("Fenster {title}: {e}"))?;
         // Standardordner liegt neben der exe und ist unter Program Files nicht beschreibbar
         let mut context = WebContext::new(Some(crate::store::dir().join("webview")));
         let webview = WebViewBuilder::new_with_web_context(&mut context)
@@ -202,8 +206,24 @@ impl Popup {
         self.window.id()
     }
 
+    #[cfg(windows)]
     pub fn hwnd(&self) -> isize {
         self.window.hwnd()
+    }
+
+    #[cfg(not(windows))]
+    pub fn hwnd(&self) -> isize {
+        0
+    }
+
+    #[cfg(windows)]
+    pub fn cursor_pos(&self) -> Option<(i32, i32)> {
+        system::cursor_pos()
+    }
+
+    #[cfg(not(windows))]
+    pub fn cursor_pos(&self) -> Option<(i32, i32)> {
+        self.window.cursor_position().ok().map(|p| (p.x as i32, p.y as i32))
     }
 
     pub fn is_visible(&self) -> bool {
@@ -212,7 +232,10 @@ impl Popup {
 
     /// Hat das Fenster (oder ein Dialog, der ihm gehört) den Fokus?
     pub fn is_foreground(&self) -> bool {
-        self.visible && system::is_foreground_family(self.window.hwnd())
+        #[cfg(windows)]
+        return self.visible && system::is_foreground_family(self.window.hwnd());
+        #[cfg(not(windows))]
+        return self.visible && self.window.is_focused();
     }
 
     /// Zeigt das Fenster. Mit `activate` bekommt es den Fokus, sonst bleibt der Fokus, wo er war.
@@ -224,7 +247,13 @@ impl Popup {
             self.window.set_focus();
             self.webview.focus().ok();
         } else {
+            #[cfg(windows)]
             system::show_no_activate(self.window.hwnd());
+            #[cfg(not(windows))]
+            {
+                self.window.set_visible(true);
+                self.window.set_always_on_top(true);
+            }
         }
     }
 
@@ -232,6 +261,7 @@ impl Popup {
         if self.visible {
             self.window.set_visible(false);
             // tao kennt Fenster nicht, die `show_no_activate` eingeblendet hat: direkt ausblenden
+            #[cfg(windows)]
             system::hide_window(self.window.hwnd());
             self.visible = false;
         }
@@ -282,8 +312,16 @@ impl Popup {
     }
 
     /// Arbeitsbereich (ohne Taskleiste) des Monitors, auf dem das Fenster liegt
+    #[cfg(windows)]
     pub fn work_area(&self) -> Option<Rect> {
         system::work_area(self.window.hwnd())
+    }
+
+    #[cfg(not(windows))]
+    pub fn work_area(&self) -> Option<Rect> {
+        let monitor = self.window.current_monitor()?;
+        let (p, s) = (monitor.position(), monitor.size());
+        Some(Rect::new(p.x, p.y, s.width as i32, s.height as i32))
     }
 
     pub fn rect(&self) -> Option<Rect> {
@@ -296,7 +334,10 @@ impl Popup {
     fn round(&self) {
         let (w, h) = self.size_px();
         let radius = (self.radius * self.scale()).round() as i32;
+        #[cfg(windows)]
         system::round_window(self.window.hwnd(), w, h, radius);
+        #[cfg(not(windows))]
+        let _ = (w, h, radius);
     }
 
     /// Schneidet die Ecken neu aus, wenn sich Grösse oder Skalierung ändern

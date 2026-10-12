@@ -1,7 +1,6 @@
 use crate::layout::{self, Dir, GAP, MARGIN, PANEL_H, PANEL_W, PILL_H, PILL_W, Rect};
 use crate::settings::Aufklappen;
 use crate::store;
-use crate::system;
 use crate::tray::UserEvent;
 use crate::windows::{Popup, parse_bar_msg};
 use std::time::{Duration, Instant};
@@ -360,7 +359,7 @@ impl Bar {
         if !self.visible || self.ball || now < self.idle_at {
             return;
         }
-        let hovered = system::cursor_pos().zip(self.group_rect()).is_some_and(|((x, y), r)| r.contains(x, y));
+        let hovered = self.pill.cursor_pos().zip(self.group_rect()).is_some_and(|((x, y), r)| r.contains(x, y));
         if busy || hovered || self.is_focused() {
             self.idle_at = now + self.idle;
         } else {

@@ -13,6 +13,10 @@ mod recap;
 mod reminder;
 mod settings;
 mod store;
+#[cfg(windows)]
+mod system;
+#[cfg(not(windows))]
+#[path = "system_unix.rs"]
 mod system;
 mod timer;
 mod tray;

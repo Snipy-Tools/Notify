@@ -1,10 +1,20 @@
 use std::fs;
 use std::path::PathBuf;
 
+fn base(windows_var: &str, xdg_var: &str, xdg_default: &str) -> PathBuf {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let base = if cfg!(windows) {
+        std::env::var_os(windows_var).map(PathBuf::from)
+    } else if cfg!(target_os = "macos") {
+        home.map(|h| h.join("Library/Application Support"))
+    } else {
+        std::env::var_os(xdg_var).map(PathBuf::from).or_else(|| home.map(|h| h.join(xdg_default)))
+    };
+    base.unwrap_or_else(std::env::temp_dir)
+}
+
 pub fn dir() -> PathBuf {
-    let base = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
+    let base = base("LOCALAPPDATA", "XDG_STATE_HOME", ".local/state");
     let dir = base.join("notify");
     fs::create_dir_all(&dir).ok();
     dir
@@ -12,9 +22,7 @@ pub fn dir() -> PathBuf {
 
 // Journal und Einstellungen liegen im Roaming-Ordner
 pub fn data_dir() -> PathBuf {
-    let base = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
+    let base = base("APPDATA", "XDG_DATA_HOME", ".local/share");
     let dir = base.join("notify");
     fs::create_dir_all(&dir).ok();
     dir
