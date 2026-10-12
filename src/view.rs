@@ -1,4 +1,4 @@
-use crate::export::{ExportConfig, build_week, counts, day_total_tenths, file_name, german_weekday};
+use crate::export::{ExportConfig, build_week, counts, day_total_hundredths, file_name, german_weekday};
 use crate::journal::{Entry, MAX_HOURS, Quelle, WeekFile, iso_week, round_hours, split_duration, week_bounds};
 use crate::settings::{DayKind, Plan};
 use chrono::{DateTime, Days, Local, NaiveDate, TimeZone, Utc};
@@ -33,10 +33,11 @@ pub fn shift_weeks(date: NaiveDate, delta: i64) -> NaiveDate {
     moved.unwrap_or(date)
 }
 
-/// Zehntelstunden als "6.4"
-pub fn fmt_tenths(tenths: i64) -> String {
-    let sign = if tenths < 0 { "-" } else { "" };
-    format!("{sign}{}.{}", tenths.abs() / 10, tenths.abs() % 10)
+/// Hundertstelstunden als "6.4" bzw. "6.25"
+pub fn fmt_hundredths(hundredths: i64) -> String {
+    let sign = if hundredths < 0 { "-" } else { "" };
+    let h = hundredths.abs();
+    if h % 10 == 0 { format!("{sign}{}.{}", h / 100, h % 100 / 10) } else { format!("{sign}{}.{:02}", h / 100, h % 100) }
 }
 
 /// Tagessumme gegen das Soll als neutraler Text
@@ -52,16 +53,16 @@ pub struct Summary {
 
 pub fn summary(total: i64, soll: i64) -> Summary {
     if soll <= 0 {
-        return Summary { main: format!("{} h", fmt_tenths(total)), note: String::new(), level: "none" };
+        return Summary { main: format!("{} h", fmt_hundredths(total)), note: String::new(), level: "none" };
     }
-    let main = format!("{} / {} h", fmt_tenths(total), fmt_tenths(soll));
+    let main = format!("{} / {} h", fmt_hundredths(total), fmt_hundredths(soll));
     match total.cmp(&soll) {
         std::cmp::Ordering::Less => {
-            Summary { main, note: format!("noch {} h offen", fmt_tenths(soll - total)), level: "open" }
+            Summary { main, note: format!("noch {} h offen", fmt_hundredths(soll - total)), level: "open" }
         }
         std::cmp::Ordering::Equal => Summary { main, note: "Soll erreicht".to_string(), level: "done" },
         std::cmp::Ordering::Greater => {
-            Summary { main, note: format!("{} h über dem Soll", fmt_tenths(total - soll)), level: "over" }
+            Summary { main, note: format!("{} h über dem Soll", fmt_hundredths(total - soll)), level: "over" }
         }
     }
 }
@@ -135,9 +136,9 @@ pub fn short_note(total: i64, soll: i64) -> String {
         return String::new();
     }
     match total.cmp(&soll) {
-        std::cmp::Ordering::Less => format!("noch {} h", fmt_tenths(soll - total)),
+        std::cmp::Ordering::Less => format!("noch {} h", fmt_hundredths(soll - total)),
         std::cmp::Ordering::Equal => "Soll erreicht".to_string(),
-        std::cmp::Ordering::Greater => format!("+{} h zu viel", fmt_tenths(total - soll)),
+        std::cmp::Ordering::Greater => format!("+{} h zu viel", fmt_hundredths(total - soll)),
     }
 }
 
@@ -166,8 +167,8 @@ pub fn bar_view(
     collapsed: bool,
 ) -> Value {
     let ort = plan.resolve(date, ort_override);
-    let soll = ort.map_or(0, |o| o.soll_tenths());
-    let total = day_total_tenths(entries);
+    let soll = ort.map_or(0, |o| o.soll_hundredths());
+    let total = day_total_hundredths(entries);
     let sum = summary(total, soll);
     let can_rest = soll > total && entries.iter().any(counts);
     let art = ort.map(|o| o.art);
@@ -183,8 +184,8 @@ pub fn bar_view(
         "orte": ort_names(plan),
         "ort_list": ort_list(plan),
         "art": art_name(art),
-        "soll": fmt_tenths(soll),
-        "total": fmt_tenths(total),
+        "soll": fmt_hundredths(soll),
+        "total": fmt_hundredths(total),
         "short_note": short_note(total, soll),
         "percent": percent(total, soll),
         "no_hours": no_hours(art, soll, total),
@@ -215,7 +216,7 @@ pub fn week_view(date: NaiveDate, today: NaiveDate, file: &WeekFile, config: &Ex
             let sum = if matches!(kind, Some(DayKind::Ferien | DayKind::Uek)) {
                 Summary { main: "–".to_string(), note: String::new(), level: "none" }
             } else {
-                summary(day_total_tenths(&entries), ort.map_or(0, |o| o.soll_tenths()))
+                summary(day_total_hundredths(&entries), ort.map_or(0, |o| o.soll_hundredths()))
             };
             json!({
                 "date": day.format("%Y-%m-%d").to_string(),
@@ -224,8 +225,8 @@ pub fn week_view(date: NaiveDate, today: NaiveDate, file: &WeekFile, config: &Ex
                 "ort": ort.map_or("", |o| o.name.as_str()),
                 "art": art_name(kind),
                 "main": sum.main,
-                "hours": if matches!(kind, Some(DayKind::Ferien | DayKind::Uek)) { String::new() } else { fmt_tenths(day_total_tenths(&entries)) },
-                "percent": percent(day_total_tenths(&entries), ort.map_or(0, |o| o.soll_tenths())),
+                "hours": if matches!(kind, Some(DayKind::Ferien | DayKind::Uek)) { String::new() } else { fmt_hundredths(day_total_hundredths(&entries)) },
+                "percent": percent(day_total_hundredths(&entries), ort.map_or(0, |o| o.soll_hundredths())),
                 "level": sum.level,
             })
         })
@@ -300,25 +301,27 @@ mod tests {
     }
 
     #[test]
-    fn formats_tenths() {
-        assert_eq!(fmt_tenths(64), "6.4");
-        assert_eq!(fmt_tenths(0), "0.0");
-        assert_eq!(fmt_tenths(5), "0.5");
-        assert_eq!(fmt_tenths(-20), "-2.0");
-        assert_eq!(fmt_tenths(240), "24.0");
+    fn formats_hundredths() {
+        assert_eq!(fmt_hundredths(640), "6.4");
+        assert_eq!(fmt_hundredths(0), "0.0");
+        assert_eq!(fmt_hundredths(50), "0.5");
+        assert_eq!(fmt_hundredths(-200), "-2.0");
+        assert_eq!(fmt_hundredths(2400), "24.0");
+        assert_eq!(fmt_hundredths(625), "6.25");
+        assert_eq!(fmt_hundredths(-5), "-0.05");
     }
 
     #[test]
     fn summary_is_neutral_text() {
-        let open = summary(64, 84);
+        let open = summary(640, 840);
         assert_eq!((open.main.as_str(), open.note.as_str(), open.level), ("6.4 / 8.4 h", "noch 2.0 h offen", "open"));
-        let done = summary(84, 84);
+        let done = summary(840, 840);
         assert_eq!((done.main.as_str(), done.note.as_str(), done.level), ("8.4 / 8.4 h", "Soll erreicht", "done"));
-        let over = summary(90, 84);
+        let over = summary(900, 840);
         assert_eq!((over.main.as_str(), over.note.as_str(), over.level), ("9.0 / 8.4 h", "0.6 h über dem Soll", "over"));
-        let none = summary(25, 0);
+        let none = summary(250, 0);
         assert_eq!((none.main.as_str(), none.note.as_str(), none.level), ("2.5 h", "", "none"));
-        assert_eq!(summary(0, 84).note, "noch 8.4 h offen");
+        assert_eq!(summary(0, 840).note, "noch 8.4 h offen");
     }
 
     #[test]
@@ -388,23 +391,23 @@ mod tests {
 
     #[test]
     fn short_note_and_percent() {
-        assert_eq!(short_note(64, 84), "noch 2.0 h");
-        assert_eq!(short_note(84, 84), "Soll erreicht");
-        assert_eq!(short_note(92, 84), "+0.8 h zu viel");
-        assert_eq!(short_note(10, 0), "");
-        assert_eq!((percent(64, 84), percent(84, 84), percent(92, 84), percent(0, 84), percent(5, 0)), (76, 100, 100, 0, 0));
-        assert_eq!(percent(-5, 84), 0);
+        assert_eq!(short_note(640, 840), "noch 2.0 h");
+        assert_eq!(short_note(840, 840), "Soll erreicht");
+        assert_eq!(short_note(920, 840), "+0.8 h zu viel");
+        assert_eq!(short_note(100, 0), "");
+        assert_eq!((percent(640, 840), percent(840, 840), percent(920, 840), percent(0, 840), percent(50, 0)), (76, 100, 100, 0, 0));
+        assert_eq!(percent(-50, 840), 0);
     }
 
     #[test]
     fn no_hours_rules() {
         use DayKind::*;
-        assert!(no_hours(Some(Uek), 0, 0) && no_hours(Some(Ferien), 84, 30) && no_hours(None, 0, 0));
+        assert!(no_hours(Some(Uek), 0, 0) && no_hours(Some(Ferien), 840, 300) && no_hours(None, 0, 0));
         // Gibb: ohne eingetragene Stunden der Hinweis, mit Stunden der Balken
-        assert!(no_hours(Some(Schule), 84, 0));
-        assert!(!no_hours(Some(Schule), 84, 30));
-        assert!(no_hours(Some(Schule), 0, 30));
-        assert!(!no_hours(Some(Arbeit), 84, 0));
+        assert!(no_hours(Some(Schule), 840, 0));
+        assert!(!no_hours(Some(Schule), 840, 300));
+        assert!(no_hours(Some(Schule), 0, 300));
+        assert!(!no_hours(Some(Arbeit), 840, 0));
         assert!(no_hours(Some(Arbeit), 0, 0));
     }
 

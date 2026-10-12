@@ -145,6 +145,9 @@ footer .btn.primary { padding: 0 20px; }
                 <h2>Tagessoll in Stunden</h2>
                 <div class="grid4" id="orte"></div>
             </div>
+            <div class="grid3">
+                <label class="field">Dauer runden auf (Stunden)<input type="text" id="step" inputmode="decimal"></label>
+            </div>
             <div class="toggle-card">
                 <div class="t"><b>Rest automatisch auf die letzte Zeile buchen</b><span>Standard: aus. Sonst nur über den Knopf in der Leiste.</span></div>
                 <button class="switch" id="rest" role="switch" aria-checked="false" aria-label="Rest automatisch buchen"></button>
@@ -492,6 +495,7 @@ function onSettings(data) {
     syncThresholdLabels();
     $("snooze").value = s.snooze_minutes;
     $("ball").value = s.ball_seconds;
+    $("step").value = s.stunden_schritt;
     $("away").value = s.away_minutes;
     $("blocks").replaceChildren();
     s.work_blocks.forEach((b) => addBlock(b.start, b.end));
@@ -542,6 +546,12 @@ function problems() {
         const v = Number(t);
         if (t === "" || !Number.isFinite(v) || v < 0 || v > 24) {
             add("wochenplan", input, 'Das Tagessoll von "' + orte[+input.dataset.index].name + '" muss zwischen 0 und 24 Stunden liegen');
+        }
+    }
+    {
+        const v = Number($("step").value.trim().replace(",", "."));
+        if (!Number.isFinite(v) || v < 0.01 || v > 1 || Math.abs(v * 100 - Math.round(v * 100)) > 1e-6) {
+            add("wochenplan", $("step"), "Die Rundung muss ein Vielfaches von 0.01 zwischen 0.01 und 1 Stunde sein (z. B. 0.1 oder 0.25)");
         }
     }
     if (!num($("interval").value, 1, 480)) add("erinnerungen", $("interval"), "Das Intervall muss eine ganze Zahl von 1 bis 480 sein");
@@ -630,6 +640,7 @@ function save() {
         interval_minutes: $("interval").value,
         snooze_minutes: $("snooze").value,
         ball_seconds: $("ball").value,
+        stunden_schritt: $("step").value,
         away_minutes: $("away").value,
         work_blocks: [...$("blocks").children].map((row) => {
             const [a, b] = row.querySelectorAll("input");

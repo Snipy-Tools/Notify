@@ -38,9 +38,9 @@ impl Ort {
         Self { name: name.into(), tagessoll: 8.4, art }
     }
 
-    /// Tagessoll in Zehntelstunden
-    pub fn soll_tenths(&self) -> i64 {
-        (self.tagessoll.clamp(0.0, MAX_HOURS_PER_DAY) * 10.0).round() as i64
+    /// Tagessoll in Hundertstelstunden
+    pub fn soll_hundredths(&self) -> i64 {
+        (self.tagessoll.clamp(0.0, MAX_HOURS_PER_DAY) * 100.0).round() as i64
     }
 }
 
@@ -126,6 +126,14 @@ impl Aufklappen {
 
 pub const MAX_SNOOZE_MINUTES: u32 = 240;
 pub const MAX_BALL_SECONDS: u32 = 3600;
+pub const MAX_STEP_HOURS: f64 = 1.0;
+
+/// Rundungsschritt in Hundertstelstunden, wenn er ein Vielfaches von 0.01 zwischen 0.01 und 1 Stunde ist
+fn step_hundredths(hours: f64) -> Option<u32> {
+    let hundredths = (hours * 100.0).round();
+    let exact = hours.is_finite() && (hours * 100.0 - hundredths).abs() < 1e-6;
+    (exact && (1.0..=MAX_STEP_HOURS * 100.0).contains(&hundredths)).then_some(hundredths as u32)
+}
 
 /// Name ohne Leerraum und ohne führendes `@`
 pub fn clean_ort_name(name: &str) -> &str {
@@ -251,6 +259,8 @@ pub struct Settings {
     pub snooze_minutes: u32,
     /// Nach so vielen Sekunden ohne Eingabe schrumpft die Pille zur Kugel
     pub ball_seconds: u32,
+    /// Auf wie viele Stunden die Dauer eines Eintrags gerundet wird, z. B. 0.1 oder 0.25
+    pub stunden_schritt: f64,
     /// Claude-Limits als Ringe in der Pille zeigen (aus: immer das Ort-Icon, die Datei wird nicht gelesen)
     pub claude_limits: bool,
     /// Ringfarben der Claude-Limits, "#rrggbb": aussen 5 Stunden, Mitte Woche, innen Kontext, Warnstufe ab 80 %, kritisch ab 95 %
@@ -304,6 +314,7 @@ impl Default for Settings {
             aufklappen: Aufklappen::Auto,
             snooze_minutes: 15,
             ball_seconds: 300,
+            stunden_schritt: 0.1,
             claude_limits: true,
             ring_five_hour: limits::DEFAULT_FIVE_HOUR.into(),
             ring_seven_day: limits::DEFAULT_SEVEN_DAY.into(),
@@ -402,6 +413,13 @@ impl Settings {
     /// Die Schwellen für Warn- und kritische Farbe (ungültige Werte aus einer von Hand bearbeiteten Datei werden zum Standard)
     pub fn ring_thresholds(&self) -> Thresholds {
         Thresholds::resolve(self.ring_warn_at, self.ring_crit_at)
+    }
+
+    /// Rundungsschritt in Hundertstelstunden, geprüft
+    pub fn step(&self) -> Result<u32, String> {
+        step_hundredths(self.stunden_schritt).ok_or_else(|| {
+            format!("Die Rundung muss ein Vielfaches von 0.01 zwischen 0.01 und {MAX_STEP_HOURS} Stunden sein (z. B. 0.1 oder 0.25)")
+        })
     }
 
     /// Das Tastenkürzel, geprüft
@@ -536,6 +554,8 @@ pub struct SettingsInput {
     #[serde(default)]
     pub ball_seconds: Option<String>,
     #[serde(default)]
+    pub stunden_schritt: Option<String>,
+    #[serde(default)]
     pub claude_limits: Option<bool>,
     /// Ringfarben als "#RRGGBB" (auch "#RGB" oder ohne "#")
     #[serde(default)]
@@ -604,6 +624,14 @@ impl SettingsInput {
                 Some(text) => parse_whole("\"Kugel nach\"", text)?,
                 None => base.ball_seconds,
             },
+            stunden_schritt: match &self.stunden_schritt {
+                Some(text) => text
+                    .trim()
+                    .replace(',', ".")
+                    .parse::<f64>()
+                    .map_err(|_| "Die Rundung muss eine Zahl sein (z. B. 0.1 oder 0.25)".to_string())?,
+                None => base.stunden_schritt,
+            },
             claude_limits: self.claude_limits.unwrap_or(base.claude_limits),
             ring_five_hour: ring_color("5 Stunden", self.ring_five_hour, &base.ring_five_hour)?,
             ring_seven_day: ring_color("Woche", self.ring_seven_day, &base.ring_seven_day)?,
@@ -624,6 +652,7 @@ impl SettingsInput {
         settings.git()?;
         settings.export()?;
         settings.hotkey()?;
+        settings.step()?;
         Ok((settings, self.autostart))
     }
 }
@@ -653,6 +682,14 @@ mod tests {
     fn date(d: u32) -> NaiveDate {
         // Oktober 2026: 5 = Montag
         NaiveDate::from_ymd_opt(2026, 10, d).unwrap()
+    }
+
+    #[test]
+    fn rounding_step_is_checked() {
+        assert_eq!(Settings::default().step(), Ok(10));
+        for (hours, ok) in [(0.25, Some(25)), (0.5, Some(50)), (1.0, Some(100)), (0.0, None), (0.001, None), (1.5, None), (f64::NAN, None)] {
+            assert_eq!(Settings { stunden_schritt: hours, ..Settings::default() }.step().ok(), ok, "{hours}");
+        }
     }
 
     #[test]
@@ -824,7 +861,7 @@ mod tests {
         assert_eq!(place(9), Some("Gibb"));
         assert_eq!(place(10), None);
         assert!(d.orte.iter().all(|o| o.tagessoll == 8.4));
-        assert_eq!(d.orte[0].soll_tenths(), 84);
+        assert_eq!(d.orte[0].soll_hundredths(), 840);
         assert_eq!(d.ferien_texte.taetigkeit, "Ich habe die Ferien genossen");
         assert_eq!(d.uek_texte.taetigkeit, "Wir hatten üK");
     }
@@ -967,6 +1004,7 @@ mod tests {
             aufklappen: None,
             snooze_minutes: None,
             ball_seconds: None,
+            stunden_schritt: None,
             claude_limits: None,
             ring_five_hour: None,
             ring_seven_day: None,

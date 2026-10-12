@@ -2,7 +2,7 @@ use crate::bar::Bar;
 use crate::export::{self, ExportConfig};
 use crate::git::{self, Commit, GitConfig};
 use crate::hotkey::Hotkey;
-use crate::journal::{Entry, Journal, Quelle, Update, WeekTexts, iso_week, split_duration, week_bounds};
+use crate::journal::{self, Entry, Journal, Quelle, Update, WeekTexts, iso_week, split_duration, week_bounds};
 use crate::layout;
 use crate::limits::{self, LimitsWatcher};
 use crate::log;
@@ -250,6 +250,7 @@ impl Recap {
         proxy: EventLoopProxy<UserEvent>,
     ) -> Result<Self, String> {
         let settings = Settings::load();
+        journal::set_step(settings.step().unwrap_or(journal::DEFAULT_STEP));
         let mut bar = Bar::new(target, proxy.clone(), settings.aufklappen)?;
         bar.set_idle(Duration::from_secs(u64::from(settings.ball_seconds)));
         let reminder = ReminderWindow::new(target, proxy.clone())?;
@@ -770,7 +771,7 @@ impl Recap {
     /// Knopf "Rest auf letzte Zeile"
     fn book_rest(&self) -> Result<(), String> {
         let over = self.journal.day_override(self.bar_date);
-        let soll = self.schedule.plan.resolve(self.bar_date, over.as_deref()).map_or(0, |o| o.soll_tenths());
+        let soll = self.schedule.plan.resolve(self.bar_date, over.as_deref()).map_or(0, |o| o.soll_hundredths());
         export::rest_buchen(&self.journal, self.bar_date, soll).map(|_| ())
     }
 
@@ -1180,6 +1181,7 @@ impl Recap {
             self.hotkey.set(&settings.hotkey);
         }
         // Ein anderer Journal-Ordner oder Wochenplan gilt sofort
+        journal::set_step(settings.step().unwrap_or(journal::DEFAULT_STEP));
         self.journal = Journal::from_settings(&settings);
         self.marker = None;
         self.bar.set_pref(settings.aufklappen);

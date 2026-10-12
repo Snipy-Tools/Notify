@@ -157,7 +157,7 @@ function renderSum(d) {
     }
 }
 
-const hoursText = (h) => (h > 0 ? h.toFixed(1) + "h" : "–");
+const hoursText = (h) => (h > 0 ? String(Math.round(h * 100) % 10 ? Math.round(h * 100) / 100 : h.toFixed(1)) + "h" : "–");
 
 function renderList() {
     const list = $("list");

@@ -9,6 +9,7 @@ use std::hash::{BuildHasher, Hasher};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 pub const MAX_TEXT: usize = 10_000;
 pub const MAX_HOURS: f64 = 24.0;
@@ -24,7 +25,7 @@ pub enum Quelle {
     Commit,
 }
 
-/// Ein Eintrag des Journals: Text, Dauer in Stunden (auf 0.1 gerundet) und Zeitpunkt (UTC).
+/// Ein Eintrag des Journals: Text, Dauer in Stunden (auf den Schritt aus den Einstellungen gerundet, Standard 0.1) und Zeitpunkt (UTC).
 /// Commits tragen zusätzlich Repo und Hash, damit Git sie nicht doppelt importiert.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
@@ -136,9 +137,21 @@ fn required(label: &str, text: &str) -> Result<(), String> {
     check_text(label, text)
 }
 
-/// Rundet auf 0.1 Stunden
+/// Rundungsschritt in Hundertstelstunden (10 = 0.1 h, 25 = 0.25 h)
+static STEP: AtomicU32 = AtomicU32::new(DEFAULT_STEP);
+pub const DEFAULT_STEP: u32 = 10;
+
+/// Setzt den Rundungsschritt in Hundertstelstunden; 0 wird ignoriert
+pub fn set_step(hundredths: u32) {
+    if hundredths > 0 {
+        STEP.store(hundredths, Ordering::Relaxed);
+    }
+}
+
+/// Rundet auf den eingestellten Schritt (Standard 0.1 Stunden)
 pub fn round_hours(hours: f64) -> f64 {
-    (hours * 10.0).round() / 10.0
+    let step = f64::from(STEP.load(Ordering::Relaxed));
+    (hours * 100.0 / step).round() * step / 100.0
 }
 
 /// Trennt eine Dauer am Ende des Textes ab: `Bug gefixt 2.4`, `Bug gefixt 2,4h`.
@@ -191,9 +204,9 @@ impl Entry {
         local_date(self.t)
     }
 
-    /// Dauer in Zehntelstunden
-    pub fn tenths(&self) -> i64 {
-        (self.stunden * 10.0).round() as i64
+    /// Dauer in Hundertstelstunden
+    pub fn hundredths(&self) -> i64 {
+        (self.stunden * 100.0).round() as i64
     }
 
     /// Schneidet Leerraum an den Rändern ab und rundet die Stunden. Läuft vor `validate`.
@@ -753,7 +766,7 @@ mod tests {
     fn trims_text_and_rounds_hours() {
         let (_dir, j) = journal();
         let saved = j.add(Entry::manuell(at(2026, 10, 7, 9, 0), "  hallo \n", 2.449)).unwrap();
-        assert_eq!((saved.text.as_str(), saved.stunden, saved.tenths()), ("hallo", 2.4, 24));
+        assert_eq!((saved.text.as_str(), saved.stunden, saved.hundredths()), ("hallo", 2.4, 240));
         assert_eq!(j.day(date(2026, 10, 7)), vec![saved]);
         let e = j.add(Entry::manuell(at(2026, 10, 7, 10, 0), "x", 0.05)).unwrap();
         assert_eq!(e.stunden, 0.1);

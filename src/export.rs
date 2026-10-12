@@ -39,15 +39,15 @@ pub struct DayData {
     pub times: Vec<String>,
     /// Tagestotal wie `8.4h`, leer bei Ferien und üK, `–` ohne Stunden
     pub total: String,
-    pub total_tenths: i64,
-    pub soll_tenths: i64,
+    pub total_hundredths: i64,
+    pub soll_hundredths: i64,
 }
 
 impl DayData {
-    /// Abweichung vom Tagessoll in Zehntelstunden (negativ: es fehlen Stunden)
+    /// Abweichung vom Tagessoll in Hundertstelstunden (negativ: es fehlen Stunden)
     #[cfg(test)]
     pub fn abweichung(&self) -> i64 {
-        self.total_tenths - self.soll_tenths
+        self.total_hundredths - self.soll_hundredths
     }
 }
 
@@ -86,14 +86,12 @@ pub fn german_weekday(date: NaiveDate) -> &'static str {
     }
 }
 
-/// Zehntelstunden als "8.4h"
-pub fn format_hours(tenths: i64) -> String {
-    let sign = if tenths < 0 { "-" } else { "" };
-    let tenths = tenths.abs();
-    format!("{sign}{}.{}h", tenths / 10, tenths % 10)
+/// Hundertstelstunden als "8.4h"
+pub fn format_hours(hundredths: i64) -> String {
+    format!("{}h", crate::view::fmt_hundredths(hundredths))
 }
 
-/// Verteilt `total` Zehntelstunden im Verhältnis der Gewichte, so dass die Summe genau `total` ist
+/// Verteilt `total` Hundertstelstunden im Verhältnis der Gewichte, so dass die Summe genau `total` ist
 /// (Methode des grössten Rests). Sind alle Gewichte 0, wird gleichmässig verteilt.
 pub fn distribute(total: i64, weights: &[i64]) -> Vec<i64> {
     if weights.is_empty() {
@@ -123,11 +121,11 @@ pub fn distribute(total: i64, weights: &[i64]) -> Vec<i64> {
     parts
 }
 
-/// Zeilen eines Tages in Zehntelstunden, bei denen der fehlende Rest bis `soll` auf die letzte Zeile kommt.
+/// Zeilen eines Tages in Hundertstelstunden, bei denen der fehlende Rest bis `soll` auf die letzte Zeile kommt.
 /// Ist die Summe schon gleich oder grösser als das Soll, bleibt alles wie es ist.
-pub fn rest_auf_letzte_zeile(tenths: &[i64], soll: i64) -> Vec<i64> {
-    let mut out = tenths.to_vec();
-    let rest = soll - tenths.iter().sum::<i64>();
+pub fn rest_auf_letzte_zeile(hundredths: &[i64], soll: i64) -> Vec<i64> {
+    let mut out = hundredths.to_vec();
+    let rest = soll - hundredths.iter().sum::<i64>();
     if out.is_empty() || rest <= 0 {
         return out;
     }
@@ -145,30 +143,30 @@ pub fn counts(entry: &Entry) -> bool {
     entry.quelle == Quelle::Manuell || entry.stunden > 0.0
 }
 
-/// Summe der Dauer eines Tages in Zehntelstunden
-pub fn day_total_tenths(entries: &[Entry]) -> i64 {
-    entries.iter().filter(|e| counts(e)).map(Entry::tenths).sum()
+/// Summe der Dauer eines Tages in Hundertstelstunden
+pub fn day_total_hundredths(entries: &[Entry]) -> i64 {
+    entries.iter().filter(|e| counts(e)).map(Entry::hundredths).sum()
 }
 
-/// Abweichung der Tagessumme vom Soll in Zehntelstunden (negativ: es fehlen Stunden)
+/// Abweichung der Tagessumme vom Soll in Hundertstelstunden (negativ: es fehlen Stunden)
 #[cfg(test)]
-pub fn deviation_tenths(entries: &[Entry], soll: i64) -> i64 {
-    day_total_tenths(entries) - soll
+pub fn deviation_hundredths(entries: &[Entry], soll: i64) -> i64 {
+    day_total_hundredths(entries) - soll
 }
 
 /// Schreibt den fehlenden Rest des Tages `date` auf die letzte Zeile (Knopf "Rest auf letzte Zeile").
 /// Gibt den geänderten Eintrag zurück, oder `None`, wenn es nichts zu tun gibt.
 pub fn rest_buchen(journal: &Journal, date: NaiveDate, soll: i64) -> Result<Option<Entry>, String> {
     let entries: Vec<Entry> = journal.day(date).into_iter().filter(counts).collect();
-    let tenths: Vec<i64> = entries.iter().map(Entry::tenths).collect();
-    let filled = rest_auf_letzte_zeile(&tenths, soll);
+    let hundredths: Vec<i64> = entries.iter().map(Entry::hundredths).collect();
+    let filled = rest_auf_letzte_zeile(&hundredths, soll);
     let Some(last) = entries.last() else { return Ok(None) };
     let new = filled[filled.len() - 1];
-    if new == last.tenths() {
+    if new == last.hundredths() {
         return Ok(None);
     }
     journal
-        .update(&last.id, Update { text: last.text.clone(), stunden: new as f64 / 10.0 })
+        .update(&last.id, Update { text: last.text.clone(), stunden: new as f64 / 100.0 })
         .map(Some)
 }
 
@@ -195,16 +193,16 @@ fn build_day(date: NaiveDate, file: &WeekFile, config: &ExportConfig, auto: Opti
         return None;
     }
 
-    let soll = ort.map_or(0, |o| o.soll_tenths());
+    let soll = ort.map_or(0, |o| o.soll_hundredths());
     // Ferien und üK haben keine Stunden, bei allen anderen Tagen füllt der Schalter den Rest auf
-    let mut tenths: Vec<i64> = day.iter().map(|e| e.tenths()).collect();
+    let mut hundredths: Vec<i64> = day.iter().map(|e| e.hundredths()).collect();
     if config.rest_auffuellen && matches!(kind, Some(DayKind::Arbeit | DayKind::Schule)) {
-        tenths = rest_auf_letzte_zeile(&tenths, soll);
+        hundredths = rest_auf_letzte_zeile(&hundredths, soll);
     }
 
     let mut activities = Vec::new();
     let mut times = Vec::new();
-    for (entry, &t) in day.iter().zip(&tenths) {
+    for (entry, &t) in day.iter().zip(&hundredths) {
         let text = if entry.quelle == Quelle::Commit {
             format!("Commit {}: {}", entry.repo.as_deref().unwrap_or("?"), entry.text)
         } else {
@@ -229,9 +227,9 @@ fn build_day(date: NaiveDate, file: &WeekFile, config: &ExportConfig, auto: Opti
         times.push(String::new());
     }
 
-    let total_tenths: i64 = tenths.iter().sum();
-    let total = if total_tenths > 0 {
-        format_hours(total_tenths)
+    let total_hundredths: i64 = hundredths.iter().sum();
+    let total = if total_hundredths > 0 {
+        format_hours(total_hundredths)
     } else if matches!(kind, Some(DayKind::Ferien | DayKind::Uek)) {
         String::new()
     } else {
@@ -239,7 +237,7 @@ fn build_day(date: NaiveDate, file: &WeekFile, config: &ExportConfig, auto: Opti
     };
     let place = ort.map_or_else(|| "Frei".to_string(), |o| format!("@{}", o.name.trim().trim_start_matches('@')));
 
-    Some(DayData { date, place, kind, activities, times, total, total_tenths, soll_tenths: soll })
+    Some(DayData { date, place, kind, activities, times, total, total_hundredths, soll_hundredths: soll })
 }
 
 /// `Uek`, wenn alle fünf Arbeitstage Ferien oder üK sind und mindestens einer üK ist; `Ferien`, wenn alle Ferien sind
@@ -477,26 +475,26 @@ pub mod tests {
             Entry::commit(at(20, 12, 0), "r", &hash, "msg"),
             Entry { stunden: 0.5, ..Entry::commit(at(20, 13, 0), "r", &hash, "msg2") },
         ];
-        assert_eq!(day_total_tenths(&entries), 40);
-        assert_eq!(deviation_tenths(&entries, 84), -44);
-        assert_eq!(deviation_tenths(&entries, 40), 0);
-        assert_eq!(deviation_tenths(&entries, 30), 10);
-        assert_eq!(day_total_tenths(&[]), 0);
+        assert_eq!(day_total_hundredths(&entries), 400);
+        assert_eq!(deviation_hundredths(&entries, 840), -440);
+        assert_eq!(deviation_hundredths(&entries, 400), 0);
+        assert_eq!(deviation_hundredths(&entries, 300), 100);
+        assert_eq!(day_total_hundredths(&[]), 0);
     }
 
     #[test]
     fn rest_buchen_updates_the_last_line_in_the_journal() {
         let dir = tempfile::tempdir().unwrap();
         let j = Journal::new(dir.path().join("weeks"));
-        assert_eq!(rest_buchen(&j, date(20), 84).unwrap(), None);
+        assert_eq!(rest_buchen(&j, date(20), 840).unwrap(), None);
 
         j.add(entry(20, 10, "A", 2.4)).unwrap();
         let last = j.add(entry(20, 12, "B", 1.0)).unwrap();
-        let done = rest_buchen(&j, date(20), 84).unwrap().unwrap();
+        let done = rest_buchen(&j, date(20), 840).unwrap().unwrap();
         assert_eq!((done.id.as_str(), done.stunden), (last.id.as_str(), 6.0));
-        assert_eq!(day_total_tenths(&j.day(date(20))), 84);
+        assert_eq!(day_total_hundredths(&j.day(date(20))), 840);
         // ein zweiter Aufruf hat nichts mehr zu tun
-        assert_eq!(rest_buchen(&j, date(20), 84).unwrap(), None);
+        assert_eq!(rest_buchen(&j, date(20), 840).unwrap(), None);
     }
 
     #[test]
@@ -504,17 +502,18 @@ pub mod tests {
         let dir = tempfile::tempdir().unwrap();
         let j = Journal::new(dir.path().join("weeks"));
         j.add(entry(20, 10, "A", 8.4)).unwrap();
-        assert_eq!(rest_buchen(&j, date(20), 84).unwrap(), None);
+        assert_eq!(rest_buchen(&j, date(20), 840).unwrap(), None);
         assert_eq!(j.day(date(20))[0].stunden, 8.4);
     }
 
     #[test]
     fn formats_hours_and_weekdays() {
-        assert_eq!(format_hours(84), "8.4h");
-        assert_eq!(format_hours(30), "3.0h");
+        assert_eq!(format_hours(840), "8.4h");
+        assert_eq!(format_hours(300), "3.0h");
         assert_eq!(format_hours(0), "0.0h");
-        assert_eq!(format_hours(105), "10.5h");
-        assert_eq!(format_hours(-4), "-0.4h");
+        assert_eq!(format_hours(1050), "10.5h");
+        assert_eq!(format_hours(-40), "-0.4h");
+        assert_eq!(format_hours(225), "2.25h");
         assert_eq!(german_weekday(date(20)), "Montag");
         assert_eq!(german_weekday(date(26)), "Sonntag");
     }
@@ -533,17 +532,17 @@ pub mod tests {
         assert_eq!(monday.activities, ["- Erste", "- Zweite", "- Dritte", "- Vierte"]);
         assert_eq!(monday.times, ["3.0h", "2.0h", "1.0h", "2.4h"]);
         assert_eq!(monday.total, "8.4h");
-        assert_eq!((monday.total_tenths, monday.soll_tenths, monday.abweichung()), (84, 84, 0));
+        assert_eq!((monday.total_hundredths, monday.soll_hundredths, monday.abweichung()), (840, 840, 0));
     }
 
     #[test]
     fn deviation_is_available_per_day() {
         let file = week_file(vec![entry(20, 11, "A", 6.4), entry(21, 11, "B", 9.0)]);
         let week = build_week(date(20), &file, &config());
-        assert_eq!(week.days[0].abweichung(), -20);
-        assert_eq!(week.days[1].abweichung(), 6);
+        assert_eq!(week.days[0].abweichung(), -200);
+        assert_eq!(week.days[1].abweichung(), 60);
         // Tag ohne Einträge: es fehlt das ganze Soll
-        assert_eq!(week.days[2].abweichung(), -84);
+        assert_eq!(week.days[2].abweichung(), -840);
         assert_eq!(week.days[2].total, "–");
     }
 
@@ -612,7 +611,7 @@ pub mod tests {
         let week = build_week(date(20), &week_file(vec![entry(25, 10, "Samstagsarbeit", 2.0)]), &c);
         assert_eq!(week.days.len(), 6);
         assert_eq!((week.days[5].place.as_str(), week.days[5].total.as_str()), ("Frei", "2.0h"));
-        assert_eq!(week.days[5].soll_tenths, 0);
+        assert_eq!(week.days[5].soll_hundredths, 0);
         // Override am Sonntag macht ihn sichtbar
         let mut file = week_file(vec![]);
         override_day(&mut file, 26, "Noser Young");
