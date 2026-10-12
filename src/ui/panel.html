@@ -212,21 +212,33 @@ function startEdit(row, e) {
     row.title = "";
     const input = document.createElement("input");
     input.type = "text";
-    input.value = e.edit;
-    input.setAttribute("aria-label", "Text und Dauer, z. B. Bug gefixt 2.4");
+    input.value = e.text;
+    input.setAttribute("aria-label", "Tätigkeit");
+    input.style.flex = "1";
+    input.style.minWidth = "0";
+    const hours = document.createElement("input");
+    hours.type = "text";
+    hours.value = e.hours > 0 ? String(e.hours) : "";
+    hours.placeholder = "0.0";
+    hours.setAttribute("inputmode", "decimal");
+    hours.setAttribute("aria-label", "Dauer in Stunden");
+    hours.style.cssText = "flex:none;width:60px;text-align:right;padding:0 12px";
     const done = () => { editing = false; if (state) renderList(); };
-    input.onkeydown = (ev) => {
+    const onkeydown = (ev) => {
         if (ev.key === "Enter") {
             ev.preventDefault();
             editing = false;
-            send({ op: "update", id: e.id, text: input.value });
+            send({ op: "update", id: e.id, text: input.value, hours: hours.value });
         } else if (ev.key === "Escape") {
             ev.stopPropagation();
             done();
         }
     };
-    input.onblur = () => { if (editing) done(); };
-    row.replaceChildren(input);
+    const onblur = (ev) => { if (editing && !row.contains(ev.relatedTarget)) done(); };
+    for (const i of [input, hours]) { i.onkeydown = onkeydown; i.onblur = onblur; }
+    row.style.gap = "10px";
+    row.style.alignItems = "center";
+    row.replaceChildren(input, hours);
     input.focus();
     input.select();
 }

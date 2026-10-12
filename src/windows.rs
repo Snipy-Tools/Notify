@@ -55,7 +55,12 @@ pub enum BarMsg {
         #[serde(default)]
         hours: String,
     },
-    Update { id: String, text: String },
+    Update {
+        id: String,
+        text: String,
+        #[serde(default)]
+        hours: String,
+    },
     Delete { id: String },
     Rest,
     /// Pille: Panel ein- oder ausklappen
@@ -368,7 +373,11 @@ mod tests {
         ));
         assert!(matches!(
             parse_bar_msg(r#"{"op":"update","id":"a-1","text":"neu 2"}"#),
-            Some(BarMsg::Update { id, text }) if id == "a-1" && text == "neu 2"
+            Some(BarMsg::Update { id, text, hours }) if id == "a-1" && text == "neu 2" && hours.is_empty()
+        ));
+        assert!(matches!(
+            parse_bar_msg(r#"{"op":"update","id":"a-1","text":"neu","hours":"2.5"}"#),
+            Some(BarMsg::Update { hours, .. }) if hours == "2.5"
         ));
         assert!(matches!(parse_bar_msg(r#"{"op":"delete","id":"x"}"#), Some(BarMsg::Delete { id }) if id == "x"));
         assert!(matches!(parse_bar_msg(r#"{"op":"rest"}"#), Some(BarMsg::Rest)));

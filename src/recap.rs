@@ -692,7 +692,7 @@ impl Recap {
             }
             BarMsg::SetOrt { ort } => self.set_ort(self.bar_date, &ort),
             BarMsg::Add { text, hours } => self.add_entry(&text, &hours),
-            BarMsg::Update { id, text } => self.update_entry(&id, &text),
+            BarMsg::Update { id, text, hours } => self.update_entry(&id, &text, &hours),
             BarMsg::Delete { id } => self.delete_entry(&id),
             BarMsg::Rest => self.book_rest(),
             BarMsg::Collapse { collapsed } => {
@@ -746,9 +746,9 @@ impl Recap {
         Ok(())
     }
 
-    /// Ändert den Text eines Eintrags. Steht am Ende eine Dauer (`... 2.4`), ersetzt sie die bisherige.
-    fn update_entry(&self, id: &str, text: &str) -> Result<(), String> {
-        let (text, hours) = split_duration(text);
+    /// Ändert Text und Dauer eines Eintrags. Ohne Dauerfeld ersetzt eine Dauer am Textende (`... 2.4`) die bisherige.
+    fn update_entry(&self, id: &str, text: &str, hours: &str) -> Result<(), String> {
+        let (text, hours) = view::parse_entry_input(text, hours)?;
         let stunden = if hours > 0.0 {
             hours
         } else {
