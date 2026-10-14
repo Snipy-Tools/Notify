@@ -500,6 +500,24 @@ fn fill_part(xml: &str, week: &WeekData, has_rows: bool) -> Result<String, Strin
     Ok(xml)
 }
 
+/// Entfernt alle selbstschliessenden XML-Elemente, deren Text `needle` enthält
+fn remove_elements(xml: &str, needle: &str) -> String {
+    let mut out = String::with_capacity(xml.len());
+    let mut rest = xml;
+    while let Some(start) = rest.find('<') {
+        let Some(len) = rest[start..].find("/>") else { break };
+        let end = start + len + 2;
+        let tag = &rest[start..end];
+        out.push_str(&rest[..start]);
+        if !(tag.contains(needle) && tag.matches('<').count() == 1) {
+            out.push_str(tag);
+        }
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// Füllt die Word-Vorlage mit den Daten der Woche und gibt die fertige .docx-Datei zurück.
 /// Bearbeitet werden `word/document.xml` sowie alle Kopf- und Fusszeilen, die `{{` enthalten.
 pub fn fill_template(template: &[u8], week: &WeekData) -> Result<Vec<u8>, String> {
@@ -510,18 +528,26 @@ pub fn fill_template(template: &[u8], week: &WeekData) -> Result<Vec<u8>, String
 
     let mut out: Vec<(String, Vec<u8>)> = Vec::with_capacity(files.len());
     for file in files {
+        if file.name == "word/vbaProject.bin" || file.name == "word/vbaData.xml" {
+            continue;
+        }
         let is_part = file.name.starts_with("word/") && file.name.ends_with(".xml") && !file.name.contains("/_rels/");
         let data = match std::str::from_utf8(&file.data) {
             Ok(xml) if is_part && (xml.contains("{{") || file.name == "word/document.xml") => {
                 fill_part(xml, week, file.name == "word/document.xml")?.into_bytes()
             }
-            // Eine .dotx-Vorlage wird zum normalen Dokument, sonst öffnet Word sie als neue Vorlage
-            Ok(xml) if file.name == "[Content_Types].xml" => xml
+            // Eine .dotx- oder .dotm-Vorlage wird zum normalen Dokument (ohne Makros), sonst öffnet Word sie als neue Vorlage
+            Ok(xml) if file.name == "[Content_Types].xml" => remove_elements(xml, "vba")
                 .replace(
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
                 )
+                .replace(
+                    "application/vnd.ms-word.template.macroEnabledTemplate.main+xml",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+                )
                 .into_bytes(),
+            Ok(xml) if file.name == "word/_rels/document.xml.rels" => remove_elements(xml, "vba").into_bytes(),
             _ => file.data,
         };
         out.push((file.name, data));
@@ -955,11 +981,31 @@ mod tests {
     #[test]
     fn dotx_template_becomes_a_regular_document() {
         let ct = br#"<Types><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml"/></Types>"#;
-        let doc = br#"<w:document><w:body><w:p><w:r><w:t>{{TAG}}</w:t></w:r></w:p></w:body></w:document>"#;
+        let doc = br#"<w:document><w:body><w:tbl><w:tr><w:tc><w:p><w:r><w:t>{{TAG}}</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>"#;
         let zip = zip_stored(&[("[Content_Types].xml", ct), ("word/document.xml", doc)]);
         let out = read_zip(&fill_template(&zip, &week_data(&week_file(vec![]))).unwrap()).unwrap();
         let types = String::from_utf8(out.iter().find(|f| f.name == "[Content_Types].xml").unwrap().data.clone()).unwrap();
         assert!(types.contains("wordprocessingml.document.main+xml") && !types.contains("template.main+xml"));
+    }
+
+    #[test]
+    fn dotm_template_loses_its_macros() {
+        let ct = br#"<Types><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.ms-word.template.macroEnabledTemplate.main+xml"/><Override PartName="/word/vbaData.xml" ContentType="application/vnd.ms-word.vbaData+xml"/></Types>"#;
+        let rels = br#"<Relationships><Relationship Id="rId1" Type="x/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject" Target="vbaProject.bin"/></Relationships>"#;
+        let doc = br#"<w:document><w:body><w:tbl><w:tr><w:tc><w:p><w:r><w:t>{{TAG}}</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>"#;
+        let zip = zip_stored(&[
+            ("[Content_Types].xml", ct),
+            ("word/_rels/document.xml.rels", rels),
+            ("word/document.xml", doc),
+            ("word/vbaProject.bin", b"macro"),
+            ("word/vbaData.xml", b"<x/>"),
+        ]);
+        let out = read_zip(&fill_template(&zip, &week_data(&week_file(vec![]))).unwrap()).unwrap();
+        assert!(!out.iter().any(|f| f.name.contains("vba")));
+        let types = part(&out, "[Content_Types].xml");
+        assert!(types.contains("wordprocessingml.document.main+xml") && !types.contains("macroEnabled") && !types.contains("vba"));
+        let rels = part(&out, "word/_rels/document.xml.rels");
+        assert!(rels.contains("styles.xml") && !rels.contains("vba"));
     }
 
     #[test]
