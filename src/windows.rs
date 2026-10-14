@@ -115,6 +115,8 @@ pub enum PickKind {
 pub enum SettingsMsg {
     Save(Box<SettingsInput>),
     SaveTemplate,
+    /// Nach einer neuen Version suchen
+    CheckUpdate,
     /// Ordner oder Datei wählen; das Ergebnis geht an das Feld `field`
     Pick { field: String, kind: PickKind },
     /// Die Seite meldet, ob gerade ein ungespeicherter Wert ungültig ist (dann bleibt das Popover bei Fokusverlust offen)
@@ -467,6 +469,7 @@ mod tests {
         .is_none());
         assert!(matches!(parse_settings_msg(r#"{"op":"close"}"#), Some(SettingsMsg::Close)));
         assert!(matches!(parse_settings_msg(r#"{"op":"save_template"}"#), Some(SettingsMsg::SaveTemplate)));
+        assert!(matches!(parse_settings_msg(r#"{"op":"check_update"}"#), Some(SettingsMsg::CheckUpdate)));
         assert!(parse_settings_msg(r#"{"op":"save","work_days":["Montag"]}"#).is_none());
         assert!(parse_settings_msg("{}").is_none());
     }

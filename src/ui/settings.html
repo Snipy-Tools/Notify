@@ -70,6 +70,7 @@ footer .btn.primary { padding: 0 20px; }
     <div class="tabs-wrap">
         <div class="tabs" role="tablist">
             <button role="tab" data-tab="allgemein" aria-selected="true">Allgemein</button>
+            <button role="tab" data-tab="darstellung" aria-selected="false">Darstellung</button>
             <button role="tab" data-tab="wochenplan" aria-selected="false">Wochenplan</button>
             <button role="tab" data-tab="vorlage" aria-selected="false">Vorlage</button>
             <button role="tab" data-tab="erinnerungen" aria-selected="false">Erinnerungen</button>
@@ -91,23 +92,28 @@ footer .btn.primary { padding: 0 20px; }
                     <button class="btn in" type="button" data-pick="export-dir" data-kind="folder">Wählen</button>
                 </div>
             </label>
-            <div class="grid2">
-                <label class="field">Tastenkürzel
-                    <input type="text" id="hotkey" spellcheck="false" placeholder="Ctrl+Alt+J">
-                    <span class="hint">Mindestens ein Modifier (Ctrl, Alt, Shift, Win) und eine Taste (A–Z, 0–9, F1–F12).</span>
-                </label>
-                <div class="field">Aufklapprichtung
-                    <div class="seg f44" id="dir" role="group" aria-label="Aufklapprichtung" style="grid-template-columns: repeat(3, minmax(0, 1fr))">
-                        <button type="button" data-v="auto" aria-pressed="true">Automatisch</button>
-                        <button type="button" data-v="unten" aria-pressed="false">Unten</button>
-                        <button type="button" data-v="oben" aria-pressed="false">Oben</button>
-                    </div>
-                    <span class="hint">Automatisch: dorthin, wo mehr Platz bis zum Bildschirmrand ist.</span>
-                </div>
+            <label class="field">Tastenkürzel
+                <input type="text" id="hotkey" spellcheck="false" placeholder="Ctrl+Alt+J">
+                <span class="hint">Mindestens ein Modifier (Ctrl, Alt, Shift, Win) und eine Taste (A–Z, 0–9, F1–F12).</span>
+            </label>
+            <div class="toggle-card">
+                <div class="t"><b>Beim Anmelden starten</b><span>Die Leiste ist nach der Anmeldung sofort da.</span></div>
+                <button class="switch" id="autostart" role="switch" aria-checked="false" aria-label="Beim Anmelden starten"></button>
             </div>
             <div class="toggle-card">
-                <div class="t"><b>Mit Windows starten</b><span>Die Leiste ist nach der Anmeldung sofort da.</span></div>
-                <button class="switch" id="autostart" role="switch" aria-checked="false" aria-label="Mit Windows starten"></button>
+                <div class="t"><b>Updates</b><span id="version">Installierte Version</span></div>
+                <button class="btn sm" id="check-update" type="button">Nach Updates suchen</button>
+            </div>
+        </div>
+
+        <div class="pane" id="tab-darstellung" hidden>
+            <div class="field">Aufklapprichtung
+                <div class="seg f44" id="dir" role="group" aria-label="Aufklapprichtung" style="grid-template-columns: repeat(3, minmax(0, 1fr))">
+                    <button type="button" data-v="auto" aria-pressed="true">Automatisch</button>
+                    <button type="button" data-v="unten" aria-pressed="false">Unten</button>
+                    <button type="button" data-v="oben" aria-pressed="false">Oben</button>
+                </div>
+                <span class="hint">Automatisch: dorthin, wo mehr Platz bis zum Bildschirmrand ist.</span>
             </div>
             <div class="toggle-card">
                 <div class="t"><b>Claude-Limits in der Pille anzeigen</b><span>Drei Ringe für 5-Stunden-Limit, Wochenlimit und Kontext statt des Ort-Icons. Aus: immer das Ort-Icon.</span></div>
@@ -445,6 +451,7 @@ function onSettings(data) {
     $("hotkey").value = s.hotkey;
     setSeg($("dir"), s.aufklappen);
     setOn("autostart", data.autostart);
+    $("version").textContent = "Installierte Version: " + data.version;
     setOn("claude-limits", s.claude_limits !== false);
     buildRingColors(s);
     syncRingSection();
@@ -561,14 +568,14 @@ function problems() {
     if (isOn("claude-limits")) {
         for (const [key, label] of RING_FIELDS) {
             const input = ringInput(key);
-            if (!normalizeHex(input.value)) add("allgemein", input, 'Die Ringfarbe "' + label + '" ist ungültig (erwartet #RRGGBB, z. B. #8aa8cc)');
+            if (!normalizeHex(input.value)) add("darstellung", input, 'Die Ringfarbe "' + label + '" ist ungültig (erwartet #RRGGBB, z. B. #8aa8cc)');
         }
         const warn = $("ring-warn-at"), crit = $("ring-crit-at");
         const okWarn = num(warn.value, 1, 100), okCrit = num(crit.value, 1, 100);
-        if (!okWarn) add("allgemein", warn, "Die Warnschwelle muss eine ganze Zahl von 1 bis 100 sein");
-        if (!okCrit) add("allgemein", crit, "Die kritische Schwelle muss eine ganze Zahl von 1 bis 100 sein");
+        if (!okWarn) add("darstellung", warn, "Die Warnschwelle muss eine ganze Zahl von 1 bis 100 sein");
+        if (!okCrit) add("darstellung", crit, "Die kritische Schwelle muss eine ganze Zahl von 1 bis 100 sein");
         if (okWarn && okCrit && Number(warn.value.trim()) >= Number(crit.value.trim())) {
-            add("allgemein", warn, "Die Warnschwelle muss unter der kritischen Schwelle liegen");
+            add("darstellung", warn, "Die Warnschwelle muss unter der kritischen Schwelle liegen");
         }
     }
     const rows = [...$("blocks").children];
@@ -662,7 +669,8 @@ for (const id of ["nachname", "vorname"]) $(id).addEventListener("input", update
 for (const id of ["hotkey", "interval", "snooze", "away", "ball", "step", "git-emails"]) $(id).addEventListener("input", revalidate);
 for (const id of ["ring-warn-at", "ring-crit-at"]) $(id).addEventListener("input", () => { syncThresholdLabels(); revalidate(); });
 $("add-block").onclick = () => { addBlock("", ""); revalidate(); };
-$("save-template").onclick = () => send({ op: "save_template" });
+$("check-update").onclick = () => send({ op: "check_update" });
+$("save-template").onclick =() => send({ op: "save_template" });
 $("save").onclick = save;
 $("cancel").onclick = () => send({ op: "close" });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") send({ op: "close" }); });

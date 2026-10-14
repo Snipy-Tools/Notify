@@ -943,6 +943,7 @@ impl Recap {
         let data = serde_json::json!({
             "settings": self.settings,
             "autostart": system::autostart_enabled(),
+            "version": env!("CARGO_PKG_VERSION"),
             "week": { "year": year, "kw": kw },
         });
         self.settings_win.script(&format!("onSettings({data})"));
@@ -1134,6 +1135,7 @@ impl Recap {
                 }
             }
             SettingsMsg::Pick { field, kind } => self.pick(field, kind),
+            SettingsMsg::CheckUpdate => crate::update::check(),
             SettingsMsg::Save(input) => match self.save_settings(*input) {
                 Ok(()) => self.close_settings(),
                 Err(e) => {

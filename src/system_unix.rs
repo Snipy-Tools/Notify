@@ -50,13 +50,13 @@ pub fn pick_folder(_owner: isize, title: &str) -> Option<PathBuf> {
 
 pub fn pick_docx(_owner: isize, title: &str) -> Option<PathBuf> {
     if cfg!(target_os = "macos") {
-        let script = format!("POSIX path of (choose file with prompt {title:?} of type {{\"docx\"}})");
+        let script = format!("POSIX path of (choose file with prompt {title:?} of type {{\"docx\", \"dotx\", \"dotm\"}})");
         picked(Command::new("osascript").args(["-e", &script]))
     } else {
         picked(Command::new("zenity").args([
             "--file-selection",
             &format!("--title={title}"),
-            "--file-filter=Word-Vorlage | *.docx",
+            "--file-filter=Word-Vorlage | *.docx *.dotx *.dotm",
         ]))
     }
 }
@@ -178,3 +178,35 @@ pub fn session_away() -> bool {
 }
 
 pub fn start_session_watcher() {}
+
+/// Zeigt eine Mitteilung, ohne die Oberfläche zu blockieren
+pub fn show_info(title: &str, text: &str) {
+    let (title, text) = (title.to_string(), text.to_string());
+    std::thread::spawn(move || {
+        let shown = if cfg!(target_os = "macos") {
+            let script = format!("display alert {title:?} message {text:?}");
+            Command::new("osascript").args(["-e", &script]).status().is_ok()
+        } else {
+            Command::new("zenity")
+                .args(["--info", &format!("--title={title}"), &format!("--text={text}")])
+                .status()
+                .is_ok()
+        };
+        if !shown {
+            eprintln!("{title}: {text}");
+        }
+    });
+}
+
+/// Ja/Nein-Frage; blockiert den aufrufenden Thread bis zur Antwort
+pub fn ask(title: &str, text: &str) -> bool {
+    if cfg!(target_os = "macos") {
+        let script = format!("display alert {title:?} message {text:?} buttons {{\"Nein\", \"Ja\"}} default button \"Ja\"");
+        output(Command::new("osascript").args(["-e", &script])).is_some_and(|s| s.contains("Ja"))
+    } else {
+        Command::new("zenity")
+            .args(["--question", &format!("--title={title}"), &format!("--text={text}")])
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+}
