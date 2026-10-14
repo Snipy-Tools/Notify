@@ -160,7 +160,7 @@ pub fn pick_folder(owner: isize, title: &str) -> Option<PathBuf> {
 /// Dateidialog für eine Word-Vorlage (.docx oder .dotx). Blockiert, darum nur aus einem eigenen Thread aufrufen.
 pub fn pick_docx(owner: isize, title: &str) -> Option<PathBuf> {
     let title = wide_z(title);
-    let filter: Vec<u16> = "Word-Vorlage (*.docx;*.dotx)\0*.docx;*.dotx\0\0".encode_utf16().collect();
+    let filter: Vec<u16> = "Word-Vorlage (*.docx;*.dotx;*.dotm)\0*.docx;*.dotx;*.dotm\0\0".encode_utf16().collect();
     let mut file = [0u16; 1024];
     // SAFETY: alle Puffer leben bis zum Ende des Aufrufs, `lStructSize` ist gesetzt
     unsafe {
