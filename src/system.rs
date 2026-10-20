@@ -14,7 +14,10 @@ use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, HWND, L
 use windows_sys::Win32::Graphics::Gdi::{
     CreateRoundRectRgn, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, SetWindowRgn,
 };
-use windows_sys::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize};
+use windows_sys::Win32::System::Com::{
+    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize,
+};
+use windows_sys::core::GUID;
 use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Registry::{
@@ -29,8 +32,7 @@ use windows_sys::Win32::UI::Controls::Dialogs::{
     GetOpenFileNameW, OFN_FILEMUSTEXIST, OFN_HIDEREADONLY, OFN_NOCHANGEDIR, OFN_PATHMUSTEXIST, OPENFILENAMEW,
 };
 use windows_sys::Win32::UI::Shell::{
-    BIF_NEWDIALOGSTYLE, BIF_RETURNONLYFSDIRS, BROWSEINFOW, FOLDERID_Documents, SHBrowseForFolderW,
-    SHGetKnownFolderPath, SHGetPathFromIDListW,
+    FOLDERID_Documents, FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, SHGetKnownFolderPath, SIGDN_FILESYSPATH,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GA_ROOTOWNER, GetAncestor, GetCursorPos, GetForegroundWindow,
@@ -129,27 +131,76 @@ fn from_wide(buf: &[u16]) -> String {
     String::from_utf16_lossy(&buf[..len])
 }
 
-/// Ordnerdialog. Blockiert, darum nur aus einem eigenen Thread aufrufen.
+/// Ordnerdialog im Explorer-Stil (IFileOpenDialog). Blockiert, darum nur aus einem eigenen Thread aufrufen.
 pub fn pick_folder(owner: isize, title: &str) -> Option<PathBuf> {
+    const CLSID_FILE_OPEN_DIALOG: GUID = GUID::from_u128(0xDC1C5A9C_E88A_4DDE_A5A1_60F82A20AEF7);
+    const IID_FILE_OPEN_DIALOG: GUID = GUID::from_u128(0xD57C7288_D4AD_4768_BE02_9D969532D960);
+
+    // Nur die benutzten Einträge der vtables, die übrigen sind Platzhalter in der richtigen Reihenfolge
+    #[repr(C)]
+    struct DialogVtbl {
+        _query_interface: usize,
+        _add_ref: usize,
+        release: unsafe extern "system" fn(*mut c_void) -> u32,
+        show: unsafe extern "system" fn(*mut c_void, HWND) -> i32,
+        _set_file_types: usize,
+        _set_file_type_index: usize,
+        _get_file_type_index: usize,
+        _advise: usize,
+        _unadvise: usize,
+        set_options: unsafe extern "system" fn(*mut c_void, u32) -> i32,
+        get_options: unsafe extern "system" fn(*mut c_void, *mut u32) -> i32,
+        _set_default_folder: usize,
+        _set_folder: usize,
+        _get_folder: usize,
+        _get_current_selection: usize,
+        _set_file_name: usize,
+        _get_file_name: usize,
+        set_title: unsafe extern "system" fn(*mut c_void, *const u16) -> i32,
+        _set_ok_button_label: usize,
+        _set_file_name_label: usize,
+        get_result: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> i32,
+    }
+    #[repr(C)]
+    struct ItemVtbl {
+        _query_interface: usize,
+        _add_ref: usize,
+        release: unsafe extern "system" fn(*mut c_void) -> u32,
+        _bind_to_handler: usize,
+        _get_parent: usize,
+        get_display_name: unsafe extern "system" fn(*mut c_void, i32, *mut *mut u16) -> i32,
+    }
+
     let title = wide_z(title);
-    let mut name = [0u16; 260];
-    let mut path = [0u16; 260];
-    // SAFETY: alle Puffer leben bis zum Ende; COM wird für diesen Thread initialisiert und wieder freigegeben
+    // SAFETY: die Zeiger kommen von COM und werden nur nach erfolgreichem Aufruf benutzt; jede Schnittstelle wird
+    // freigegeben, COM wird für diesen Thread initialisiert und wieder freigegeben
     unsafe {
         let com = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
-        let mut info: BROWSEINFOW = std::mem::zeroed();
-        info.hwndOwner = owner as HWND;
-        info.pszDisplayName = name.as_mut_ptr();
-        info.lpszTitle = title.as_ptr();
-        info.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-        let pidl = SHBrowseForFolderW(&info);
-        let picked = if pidl.is_null() {
-            None
-        } else {
-            let ok = SHGetPathFromIDListW(pidl, path.as_mut_ptr()) != 0;
-            CoTaskMemFree(pidl as *const c_void);
-            ok.then(|| PathBuf::from(from_wide(&path)))
-        };
+        let mut dialog: *mut c_void = null_mut();
+        let created =
+            CoCreateInstance(&CLSID_FILE_OPEN_DIALOG, null_mut(), CLSCTX_INPROC_SERVER, &IID_FILE_OPEN_DIALOG, &mut dialog);
+        let mut picked = None;
+        if created >= 0 && !dialog.is_null() {
+            let vtbl = &**(dialog as *mut *const DialogVtbl);
+            let mut options = 0u32;
+            (vtbl.get_options)(dialog, &mut options);
+            (vtbl.set_options)(dialog, options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+            (vtbl.set_title)(dialog, title.as_ptr());
+            if (vtbl.show)(dialog, owner as HWND) >= 0 {
+                let mut item: *mut c_void = null_mut();
+                if (vtbl.get_result)(dialog, &mut item) >= 0 && !item.is_null() {
+                    let item_vtbl = &**(item as *mut *const ItemVtbl);
+                    let mut name: *mut u16 = null_mut();
+                    if (item_vtbl.get_display_name)(item, SIGDN_FILESYSPATH, &mut name) >= 0 && !name.is_null() {
+                        let len = (0..).take_while(|&i| *name.add(i) != 0).count();
+                        picked = Some(PathBuf::from(from_wide(std::slice::from_raw_parts(name, len))));
+                        CoTaskMemFree(name as *const c_void);
+                    }
+                    (item_vtbl.release)(item);
+                }
+            }
+            (vtbl.release)(dialog);
+        }
         if com >= 0 {
             CoUninitialize();
         }
